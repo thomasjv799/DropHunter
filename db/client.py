@@ -37,10 +37,13 @@ def get_games() -> list:
 
 def add_game(title: str, itad_id: str, target_price: Optional[float] = None) -> dict:
     logger.info("Adding game: %s (itad_id=%s, target_price=%s)", title, itad_id, target_price)
-    row = {"title": title, "itad_id": itad_id}
-    if target_price is not None:
-        row["target_price"] = target_price
-    result = _get_client().table("games").insert(row).execute()
+    row = {"title": title, "itad_id": itad_id, "target_price": target_price}
+    result = (
+        _get_client()
+        .table("games")
+        .upsert(row, on_conflict="itad_id")
+        .execute()
+    )
     if not result.data:
         raise RuntimeError(f"Insert into 'games' returned no data: {result}")
     logger.info("Game added successfully: %s", title)
