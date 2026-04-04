@@ -41,7 +41,7 @@ def get_best_price(itad_id: str) -> Optional[dict]:
     logger.info("Fetching prices for ITAD id: %s", itad_id)
     response = requests.post(
         f"{_BASE_URL}/games/prices/v3",
-        params={"key": _api_key(), "country": "US"},
+        params={"key": _api_key(), "country": "IN"},
         json=[itad_id],
     )
     response.raise_for_status()
@@ -58,9 +58,38 @@ def get_best_price(itad_id: str) -> Optional[dict]:
         "cut": best["cut"],
     }
     logger.info(
-        "Best price: $%.2f on %s (%d%% off)",
+        "Best price: ₹%.2f on %s (%d%% off)",
         result["price"],
         result["store"],
         result["cut"],
     )
     return result
+
+
+def get_all_prices(itad_id: str) -> list[dict]:
+    """
+    Fetch all current store prices for a given ITAD game ID.
+    Returns a list of dicts with keys: price, regular_price, store, cut.
+    """
+    logger.info("Fetching all prices for ITAD id: %s", itad_id)
+    response = requests.post(
+        f"{_BASE_URL}/games/prices/v3",
+        params={"key": _api_key(), "country": "IN"},
+        json=[itad_id],
+    )
+    response.raise_for_status()
+    data = response.json()
+    if not data or not data[0].get("deals"):
+        return []
+    
+    parsed_deals = []
+    for d in data[0]["deals"]:
+        parsed_deals.append({
+            "price": d["price"]["amount"],
+            "regular_price": d["regular"]["amount"],
+            "store": d["shop"]["name"],
+            "cut": d["cut"],
+        })
+    # Sort by price ascending
+    parsed_deals.sort(key=lambda x: x["price"])
+    return parsed_deals

@@ -24,7 +24,7 @@ def process_game(game: dict) -> None:
         return
 
     logger.info(
-        "[%s] Current: $%.2f on %s (%d%% off)",
+        "[%s] Current: ₹%.2f on %s (%d%% off)",
         title,
         price_data["price"],
         price_data["store"],
@@ -47,7 +47,7 @@ def process_game(game: dict) -> None:
 
     is_deal = price_data["price"] <= historical_low
     logger.info(
-        "[%s] Historical low: $%.2f | Is deal: %s",
+        "[%s] Historical low: ₹%.2f | Is deal: %s",
         title,
         historical_low,
         is_deal,
@@ -64,8 +64,8 @@ def process_game(game: dict) -> None:
     provider = get_provider()
     commentary = provider.generate_text(
         f"Write a one-sentence buy recommendation for '{title}'. "
-        f"Current price: ${price_data['price']} on {price_data['store']} "
-        f"({price_data['cut']}% off). Historical low: ${historical_low}."
+        f"Current price: ₹{price_data['price']} on {price_data['store']} "
+        f"({price_data['cut']}% off). Historical low: ₹{historical_low}."
     )
 
     send_deal_alert(

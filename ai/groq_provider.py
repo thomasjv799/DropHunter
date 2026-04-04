@@ -26,11 +26,39 @@ class GroqProvider(AIProvider):
         return response.choices[0].message.content
 
     def chat_with_tools(self, messages: list[dict], tools: list[dict]) -> dict:
-        response = self._client.chat.completions.create(
-            model=_MODEL,
-            messages=messages,
-            tools=tools if tools else None,
-        )
+        import re
+        import groq
+
+        try:
+            response = self._client.chat.completions.create(
+                model=_MODEL,
+                messages=messages,
+                tools=tools if tools else None,
+            )
+        except groq.BadRequestError as e:
+            body = getattr(e, "body", {})
+            err = body.get("error", {})
+            if err.get("code") == "tool_use_failed" and "failed_generation" in err:
+                failed_gen = err["failed_generation"]
+                # Try to salvage different malformed formats:
+                # <function=get_current_price{"title": "..."}</function>
+                # <function=get_current_price {"title": "..."}>
+                match = re.search(r"<function=([a-zA-Z0-9_]+)\s*(.*)", failed_gen)
+                if match:
+                    name = match.group(1)
+                    args_str = match.group(2).strip()
+                    if args_str.endswith("</function>"):
+                        args_str = args_str[:-11].strip()
+                    elif args_str.endswith(">"):
+                        args_str = args_str[:-1].strip()
+
+                    try:
+                        args = json.loads(args_str) if args_str else {}
+                        return {"tool_calls": [{"name": name, "arguments": args}]}
+                    except json.JSONDecodeError:
+                        pass
+            raise
+
         message = response.choices[0].message
         if message.tool_calls:
             tool_calls = []
