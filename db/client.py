@@ -35,18 +35,30 @@ def get_games() -> list:
     return data
 
 
-def add_game(title: str, itad_id: str) -> dict:
-    logger.info("Adding game: %s (itad_id=%s)", title, itad_id)
-    result = (
-        _get_client()
-        .table("games")
-        .insert({"title": title, "itad_id": itad_id})
-        .execute()
-    )
+def add_game(title: str, itad_id: str, target_price: Optional[float] = None) -> dict:
+    logger.info("Adding game: %s (itad_id=%s, target_price=%s)", title, itad_id, target_price)
+    row = {"title": title, "itad_id": itad_id}
+    if target_price is not None:
+        row["target_price"] = target_price
+    result = _get_client().table("games").insert(row).execute()
     if not result.data:
         raise RuntimeError(f"Insert into 'games' returned no data: {result}")
     logger.info("Game added successfully: %s", title)
     return result.data[0]
+
+
+def set_target_price(title: str, target_price: Optional[float]) -> bool:
+    logger.info("Setting target price for %s: %s", title, target_price)
+    result = (
+        _get_client()
+        .table("games")
+        .update({"target_price": target_price})
+        .ilike("title", title)
+        .execute()
+    )
+    updated = len(result.data) > 0
+    logger.info("Target price updated for %s: %s", title, updated)
+    return updated
 
 
 def remove_game(title: str) -> bool:

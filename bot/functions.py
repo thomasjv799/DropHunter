@@ -2,30 +2,37 @@ import logging
 
 from db.client import (
     add_game as db_add_game,
-)
-from db.client import (
     get_games as db_get_games,
-)
-from db.client import (
     get_recent_deals as db_get_recent_deals,
-)
-from db.client import (
     remove_game as db_remove_game,
+    set_target_price as db_set_target_price,
 )
-from utils.itad import get_best_price, get_all_prices, search_game
+from utils.itad import get_all_prices, search_game
 
 logger = logging.getLogger("drophunter.functions")
 
 
-def add_game(title: str) -> str:
-    logger.info("add_game called: title=%s", title)
+def add_game(title: str, target_price: float = None) -> str:
+    logger.info("add_game called: title=%s, target_price=%s", title, target_price)
     game = search_game(title)
     if game is None:
         logger.warning("Game not found on ITAD: %s", title)
         return f"Sorry, '{title}' was not found on IsThereAnyDeal."
-    db_add_game(game["title"], game["id"])
+    db_add_game(game["title"], game["id"], target_price=target_price)
     logger.info("Game added to watchlist: %s (id=%s)", game["title"], game["id"])
+    if target_price is not None:
+        return f"Now tracking **{game['title']}**. I'll alert you when it drops below ₹{target_price:.2f}."
     return f"Now tracking **{game['title']}**. I'll alert you when a deal drops."
+
+
+def set_target_price(title: str, target_price: float = None) -> str:
+    logger.info("set_target_price called: title=%s, target_price=%s", title, target_price)
+    updated = db_set_target_price(title, target_price)
+    if not updated:
+        return f"**{title}** wasn't found in your watchlist."
+    if target_price is None:
+        return f"Removed target price for **{title}**. I'll now alert on historical lows."
+    return f"Target price for **{title}** set to ₹{target_price:.2f}."
 
 
 def remove_game(title: str) -> str:
@@ -44,8 +51,13 @@ def list_games() -> str:
     logger.info("Found %d game(s) in watchlist", len(games))
     if not games:
         return "Your watchlist is empty. Try 'track <game name>' to add a game."
-    lines = "\n".join(f"• {g['title']}" for g in games)
-    return f"**Games you're tracking:**\n{lines}"
+    lines = []
+    for g in games:
+        line = f"• {g['title']}"
+        if g.get("target_price") is not None:
+            line += f" (target: ₹{g['target_price']:.2f})"
+        lines.append(line)
+    return f"**Games you're tracking:**\n" + "\n".join(lines)
 
 
 def get_current_price(title: str) -> str:
@@ -87,14 +99,39 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "add_game",
-            "description": "Add a game to the watchlist to track its price.",
+            "description": "Add a game to the watchlist to track its price. Optionally set a target price threshold in INR to only alert when the price drops below that amount.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "title": {
                         "type": "string",
                         "description": "The name of the game to track.",
-                    }
+                    },
+                    "target_price": {
+                        "type": "number",
+                        "description": "Optional price threshold in INR. Only alert when price drops below this amount.",
+                    },
+                },
+                "required": ["title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_target_price",
+            "description": "Set or update a custom target price threshold in INR for a tracked game. Pass null to remove the threshold and revert to historical low alerts.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "The name of the tracked game.",
+                    },
+                    "target_price": {
+                        "type": "number",
+                        "description": "Price threshold in INR. Omit or pass null to remove.",
+                    },
                 },
                 "required": ["title"],
             },
@@ -158,6 +195,7 @@ _FUNCTION_MAP = {
     "list_games": list_games,
     "get_current_price": get_current_price,
     "get_recent_deals": get_recent_deals,
+    "set_target_price": set_target_price,
 }
 
 
