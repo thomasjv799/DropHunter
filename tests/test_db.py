@@ -147,3 +147,97 @@ def test_get_recent_deals(mock_supabase):
     assert len(result) == 1
     assert result[0]["games"]["title"] == "Hades"
     assert result[0]["price"] == 9.99
+
+
+from db.client import get_chat_context, save_turn, get_message_count, summarize_if_needed
+
+
+def _make_client(summary_data=None, messages_data=None, count=0):
+    """Helper: returns a mock Supabase client wired up for memory queries."""
+    client = MagicMock()
+    # chat_summary select chain
+    summary_chain = MagicMock()
+    summary_chain.execute.return_value.data = summary_data or []
+    client.table("chat_summary").select.return_value.eq.return_value = summary_chain
+    # chat_messages select chain
+    msg_chain = MagicMock()
+    msg_chain.execute.return_value.data = messages_data or []
+    msg_chain.execute.return_value.count = count
+    (client.table("chat_messages").select.return_value
+     .eq.return_value.order.return_value.limit.return_value) = msg_chain
+    return client
+
+
+def test_get_chat_context_no_history(mocker):
+    mock_client = _make_client()
+    mocker.patch("db.client._get_client", return_value=mock_client)
+    result = get_chat_context("user123")
+    assert result == {"summary": None, "messages": []}
+
+
+def test_get_chat_context_with_summary_and_messages(mocker):
+    mock_client = _make_client(
+        summary_data=[{"summary": "User tracks Hades."}],
+        messages_data=[
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+        ],
+    )
+    mocker.patch("db.client._get_client", return_value=mock_client)
+    result = get_chat_context("user123")
+    assert result["summary"] == "User tracks Hades."
+    assert len(result["messages"]) == 2
+
+
+def test_get_chat_context_supabase_failure_returns_empty(mocker):
+    mocker.patch("db.client._get_client", side_effect=Exception("connection refused"))
+    result = get_chat_context("user123")
+    assert result == {"summary": None, "messages": []}
+
+
+def test_save_turn_inserts_two_messages(mocker):
+    mock_client = MagicMock()
+    mocker.patch("db.client._get_client", return_value=mock_client)
+    save_turn("user123", "track hades", "Now tracking Hades.")
+    mock_client.table("chat_messages").insert.assert_called_once_with([
+        {"user_id": "user123", "role": "user", "content": "track hades"},
+        {"user_id": "user123", "role": "assistant", "content": "Now tracking Hades."},
+    ])
+
+
+def test_get_message_count(mocker):
+    mock_client = MagicMock()
+    mock_client.table("chat_messages").select.return_value.eq.return_value.execute.return_value.count = 12
+    mocker.patch("db.client._get_client", return_value=mock_client)
+    assert get_message_count("user123") == 12
+
+
+def test_summarize_if_needed_skips_when_under_threshold(mocker):
+    mock_client = MagicMock()
+    mock_client.table("chat_messages").select.return_value.eq.return_value.execute.return_value.count = 10
+    mocker.patch("db.client._get_client", return_value=mock_client)
+    mock_gemini = MagicMock()
+    summarize_if_needed("user123", mock_gemini)
+    mock_gemini.generate_text.assert_not_called()
+
+
+def test_summarize_if_needed_triggers_and_deletes(mocker):
+    mock_client = MagicMock()
+    # count > 20
+    mock_client.table("chat_messages").select.return_value.eq.return_value.execute.return_value.count = 21
+    # oldest 15 messages
+    oldest_msgs = [{"id": f"id{i}", "role": "user", "content": f"msg{i}"} for i in range(15)]
+    (mock_client.table("chat_messages").select.return_value
+     .eq.return_value.order.return_value.limit.return_value.execute.return_value.data) = oldest_msgs
+    # no existing summary
+    mock_client.table("chat_summary").select.return_value.eq.return_value.execute.return_value.data = []
+    mocker.patch("db.client._get_client", return_value=mock_client)
+
+    mock_gemini = MagicMock()
+    mock_gemini.generate_text.return_value = "User tracks Hades with target ₹500."
+    summarize_if_needed("user123", mock_gemini)
+
+    mock_gemini.generate_text.assert_called_once()
+    mock_client.table("chat_summary").upsert.assert_called_once()
+    ids = [f"id{i}" for i in range(15)]
+    mock_client.table("chat_messages").delete.return_value.in_.assert_called_once_with("id", ids)
