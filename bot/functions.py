@@ -18,11 +18,11 @@ def add_game(title: str, target_price: float = None) -> str:
     if game is None:
         logger.warning("Game not found on ITAD: %s", title)
         return f"Sorry, '{title}' was not found on IsThereAnyDeal."
-    db_add_game(game["title"], game["id"], target_price=target_price)
-    logger.info("Game added to watchlist: %s (id=%s)", game["title"], game["id"])
+    result = db_add_game(game["title"], game["id"], target_price=target_price)
+    logger.info("Game upserted in watchlist: %s (id=%s)", game["title"], game["id"])
     if target_price is not None:
-        return f"Now tracking **{game['title']}**. I'll alert you when it drops below ₹{target_price:.2f}."
-    return f"Now tracking **{game['title']}**. I'll alert you when a deal drops."
+        return f"Tracking **{game['title']}**. I'll alert you when it drops below ₹{target_price:.2f}."
+    return f"Tracking **{game['title']}**. I'll alert you when a deal drops."
 
 
 def set_target_price(title: str, target_price: float = None) -> str:
