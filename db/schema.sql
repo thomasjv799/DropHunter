@@ -26,3 +26,20 @@ create table if not exists notifications_log (
 
 create index if not exists idx_price_history_game_id on price_history(game_id);
 create index if not exists idx_notifications_log_game_id on notifications_log(game_id);
+
+create table if not exists chat_messages (
+    id uuid primary key default gen_random_uuid(),
+    user_id text not null,
+    role text not null,
+    content text not null,
+    created_at timestamptz not null default now()
+);
+
+create table if not exists chat_summary (
+    id uuid primary key default gen_random_uuid(),
+    user_id text not null unique,
+    summary text not null,
+    updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_chat_messages_user_id on chat_messages(user_id);
