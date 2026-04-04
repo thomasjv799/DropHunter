@@ -9,7 +9,7 @@ def test_add_game_success(mocker):
     result = add_game("Elden Ring")
     assert "Elden Ring" in result
     assert "tracking" in result.lower()
-    mock_db_add.assert_called_once_with("Elden Ring", "abc123")
+    mock_db_add.assert_called_once_with("Elden Ring", "abc123", target_price=None)
 
 
 def test_add_game_not_found(mocker):
@@ -64,8 +64,8 @@ def test_get_current_price_success(mocker):
 
     mocker.patch("bot.functions.search_game", return_value={"id": "abc123", "title": "Hades"})
     mocker.patch(
-        "bot.functions.get_best_price",
-        return_value={"price": 9.99, "regular_price": 24.99, "store": "Steam", "cut": 60},
+        "bot.functions.get_all_prices",
+        return_value=[{"price": 9.99, "regular_price": 24.99, "store": "Steam", "cut": 60}],
     )
     result = get_current_price("Hades")
     assert "9.99" in result

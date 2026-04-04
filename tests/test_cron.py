@@ -18,7 +18,7 @@ def test_process_game_sends_alert_when_deal_detected(sample_game, mocker):
     )
     mocker.patch("cron.price_check.insert_price_history", return_value={})
     mocker.patch("cron.price_check.get_historical_low", return_value=14.99)
-    mocker.patch("cron.price_check.was_recently_notified", return_value=False)
+    mocker.patch("cron.price_check.get_last_notified_price", return_value=None)
     mock_provider = MagicMock()
     mock_provider.generate_text.return_value = "Best price ever!"
     mocker.patch("cron.price_check.get_provider", return_value=mock_provider)
@@ -47,7 +47,6 @@ def test_process_game_skips_when_not_a_deal(sample_game, mocker):
     )
     mocker.patch("cron.price_check.insert_price_history", return_value={})
     mocker.patch("cron.price_check.get_historical_low", return_value=14.99)
-    mocker.patch("cron.price_check.was_recently_notified", return_value=False)
     mock_alert = mocker.patch("cron.price_check.send_deal_alert")
 
     process_game(sample_game)
@@ -55,7 +54,7 @@ def test_process_game_skips_when_not_a_deal(sample_game, mocker):
     mock_alert.assert_not_called()
 
 
-def test_process_game_skips_when_recently_notified(sample_game, mocker):
+def test_process_game_skips_when_already_notified_at_same_price(sample_game, mocker):
     from cron.price_check import process_game
 
     mocker.patch(
@@ -64,7 +63,8 @@ def test_process_game_skips_when_recently_notified(sample_game, mocker):
     )
     mocker.patch("cron.price_check.insert_price_history", return_value={})
     mocker.patch("cron.price_check.get_historical_low", return_value=14.99)
-    mocker.patch("cron.price_check.was_recently_notified", return_value=True)
+    # Same price as last notification — should skip
+    mocker.patch("cron.price_check.get_last_notified_price", return_value=14.99)
     mock_alert = mocker.patch("cron.price_check.send_deal_alert")
 
     process_game(sample_game)

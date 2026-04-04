@@ -27,12 +27,13 @@ def test_get_games_returns_list(mock_supabase):
 def test_add_game_inserts_row(mock_supabase):
     from db.client import add_game
 
-    mock_supabase.table.return_value.insert.return_value.execute.return_value.data = [
+    mock_supabase.table.return_value.upsert.return_value.execute.return_value.data = [
         {"id": "abc", "title": "Elden Ring", "itad_id": "eldenring"}
     ]
     result = add_game("Elden Ring", "eldenring")
-    mock_supabase.table.return_value.insert.assert_called_once_with(
-        {"title": "Elden Ring", "itad_id": "eldenring"}
+    mock_supabase.table.return_value.upsert.assert_called_once_with(
+        {"title": "Elden Ring", "itad_id": "eldenring", "target_price": None},
+        on_conflict="itad_id",
     )
     assert result["title"] == "Elden Ring"
 
