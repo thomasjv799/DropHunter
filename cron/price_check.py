@@ -37,18 +37,24 @@ def process_game(game: dict) -> None:
         store=price_data["store"],
     )
 
-    historical_low = get_historical_low(game["itad_id"])
-    if historical_low is None:
-        logger.warning("[%s] No ITAD historical low available, skipping.", title)
-        return
-
-    is_deal = price_data["price"] <= historical_low
-    logger.info(
-        "[%s] ITAD historical low: ₹%.2f | Is deal: %s",
-        title,
-        historical_low,
-        is_deal,
-    )
+    target_price = game.get("target_price")
+    if target_price is not None:
+        threshold = float(target_price)
+        is_deal = price_data["price"] <= threshold
+        logger.info(
+            "[%s] Target price: ₹%.2f | Current: ₹%.2f | Is deal: %s",
+            title, threshold, price_data["price"], is_deal,
+        )
+    else:
+        historical_low = get_historical_low(game["itad_id"])
+        if historical_low is None:
+            logger.warning("[%s] No ITAD historical low available, skipping.", title)
+            return
+        is_deal = price_data["price"] <= historical_low
+        logger.info(
+            "[%s] ITAD historical low: ₹%.2f | Current: ₹%.2f | Is deal: %s",
+            title, historical_low, price_data["price"], is_deal,
+        )
 
     if not is_deal:
         return
