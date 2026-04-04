@@ -4,10 +4,18 @@ from typing import Optional
 
 import requests
 from dotenv import load_dotenv
+from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
 
 _BASE_URL = "https://api.isthereanydeal.com"
 
 logger = logging.getLogger("drophunter.itad")
+
+_retry = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
 
 
 def _api_key() -> str:
@@ -15,6 +23,7 @@ def _api_key() -> str:
     return os.environ["ITAD_API_KEY"]
 
 
+@_retry
 def search_game(title: str) -> Optional[dict]:
     """Search ITAD for a game by title. Returns the first match or None."""
     logger.info("Searching ITAD for: %s", title)
@@ -33,6 +42,7 @@ def search_game(title: str) -> Optional[dict]:
     return results[0]
 
 
+@_retry
 def get_best_price(itad_id: str) -> Optional[dict]:
     """
     Fetch current best price across all stores for a given ITAD game ID.
@@ -66,6 +76,29 @@ def get_best_price(itad_id: str) -> Optional[dict]:
     return result
 
 
+@_retry
+def get_historical_low(itad_id: str) -> Optional[float]:
+    """
+    Fetch the all-time historical low price for a game from ITAD.
+    Returns the lowest price amount in INR, or None if unavailable.
+    """
+    logger.info("Fetching historical low for ITAD id: %s", itad_id)
+    response = requests.post(
+        f"{_BASE_URL}/games/historylow/v1",
+        params={"key": _api_key(), "country": "IN"},
+        json=[itad_id],
+    )
+    response.raise_for_status()
+    data = response.json()
+    if not data or not data[0].get("low"):
+        logger.info("No historical low found for: %s", itad_id)
+        return None
+    low = data[0]["low"]["price"]["amount"]
+    logger.info("Historical low for %s: ₹%.2f", itad_id, low)
+    return float(low)
+
+
+@_retry
 def get_all_prices(itad_id: str) -> list[dict]:
     """
     Fetch all current store prices for a given ITAD game ID.

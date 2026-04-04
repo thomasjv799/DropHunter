@@ -3,13 +3,12 @@ import logging
 from ai import get_provider
 from db.client import (
     get_games,
-    get_historical_low,
+    get_last_notified_price,
     insert_price_history,
     log_notification,
-    was_recently_notified,
 )
 from utils.discord import send_deal_alert
-from utils.itad import get_best_price
+from utils.itad import get_best_price, get_historical_low
 
 logger = logging.getLogger("drophunter.cron")
 
@@ -38,16 +37,14 @@ def process_game(game: dict) -> None:
         store=price_data["store"],
     )
 
-    historical_low = get_historical_low(game["id"])
+    historical_low = get_historical_low(game["itad_id"])
     if historical_low is None:
-        logger.warning(
-            "[%s] Historical low returned None after insert, skipping.", title
-        )
+        logger.warning("[%s] No ITAD historical low available, skipping.", title)
         return
 
     is_deal = price_data["price"] <= historical_low
     logger.info(
-        "[%s] Historical low: ₹%.2f | Is deal: %s",
+        "[%s] ITAD historical low: ₹%.2f | Is deal: %s",
         title,
         historical_low,
         is_deal,
@@ -56,8 +53,14 @@ def process_game(game: dict) -> None:
     if not is_deal:
         return
 
-    if was_recently_notified(game["id"]):
-        logger.info("[%s] Already notified recently, skipping.", title)
+    last_notified_price = get_last_notified_price(game["id"])
+    if last_notified_price is not None and price_data["price"] >= last_notified_price:
+        logger.info(
+            "[%s] Price ₹%.2f is not lower than last notified ₹%.2f, skipping.",
+            title,
+            price_data["price"],
+            last_notified_price,
+        )
         return
 
     logger.info("[%s] Deal detected! Generating AI commentary...", title)
