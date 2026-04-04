@@ -1,6 +1,5 @@
 import logging
 import os
-from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -89,43 +88,23 @@ def insert_price_history(
     return result.data[0]
 
 
-def get_historical_low(game_id: str) -> Optional[float]:
+
+def get_last_notified_price(game_id: str) -> Optional[float]:
+    """Return the price from the most recent notification for this game, or None."""
     result = (
         _get_client()
-        .table("price_history")
+        .table("notifications_log")
         .select("price")
         .eq("game_id", game_id)
-        .order("price", desc=False)
+        .order("notified_at", desc=True)
         .limit(1)
         .execute()
     )
     if not result.data:
         return None
-    low = float(result.data[0]["price"])
-    logger.debug("Historical low for %s: $%.2f", game_id, low)
-    return low
-
-
-def was_recently_notified(game_id: str, hours: int = 12) -> bool:
-    cutoff = (
-        datetime.now(timezone.utc) - timedelta(hours=hours)
-    ).isoformat()
-    result = (
-        _get_client()
-        .table("notifications_log")
-        .select("id")
-        .eq("game_id", game_id)
-        .gte("notified_at", cutoff)
-        .execute()
-    )
-    notified = len(result.data) > 0
-    logger.debug(
-        "Recently notified check for %s (last %dh): %s",
-        game_id,
-        hours,
-        notified,
-    )
-    return notified
+    price = float(result.data[0]["price"])
+    logger.debug("Last notified price for %s: ₹%.2f", game_id, price)
+    return price
 
 
 def log_notification(game_id: str, price: float) -> dict:

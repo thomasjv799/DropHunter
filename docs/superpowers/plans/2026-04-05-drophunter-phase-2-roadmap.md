@@ -44,7 +44,7 @@ Currently, every query is completely isolated (stateless).
 ### 6. Dockerization & Deployment Architecture
 - **Containerization**: Create a `Dockerfile` to cleanly package the DropHunter bot, LangGraph engine, and Python dependencies.
 - **Docker Compose**: Introduce a `docker-compose.yml` file to handle environment orchestration cleanly, making it trivial to spin up the tracker locally.
-- **Cloud Hosting 24/7**: Transition from local execution/GitHub Actions to deploying the container on a scalable cloud host (e.g., Railway, Render, or a dedicated VPS) to ensure the Discord bot and periodic sweeps remain alive around the clock natively.
+- **Cloud Hosting 24/7**: Deploy on **Render** using Docker. The bot container runs 24/7 on Render; GitHub Actions cron continues to run `price_check.py` independently.
 - **Architecture note**: The bot container and GitHub Actions cron are fully decoupled — both connect independently to Supabase, ITAD API, and Discord. No inbound ports needed on the container (Discord uses an outbound WebSocket).
 
 ---
@@ -54,7 +54,7 @@ Currently, every query is completely isolated (stateless).
 These are existing issues in the Phase 1 implementation that need to be addressed alongside new features.
 
 ### A. Historical Low Accuracy
-The current `get_historical_low()` reads from the local `price_history` table, not ITAD's actual all-time low data. This means the "historical low" is only as accurate as how long the bot has been running. Fix: query ITAD's historical low endpoint directly and use that as the baseline for deal detection.
+The current `get_historical_low()` reads from the local `price_history` table, not ITAD's actual all-time low data. This means the "historical low" is only as accurate as how long the bot has been running. Fix: query ITAD's historical low endpoint directly (confirmed available in v3 API) and use that as the baseline for deal detection.
 
 ### B. ITAD Rate Limiting & Retry Logic
 The cron loop calls the ITAD API sequentially per game with no retry or exponential backoff. Transient errors are silently swallowed by a bare `except Exception`. Fix: add retry logic with backoff (e.g., `tenacity`) and surface persistent failures more visibly.

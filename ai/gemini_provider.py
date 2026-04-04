@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 from ai.base import AIProvider
 
-_MODEL = "gemini-1.5-flash"
+_MODEL = "gemini-3-flash-preview"
 
 
 def _to_gemini_tools(tools: list) -> list:
