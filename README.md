@@ -27,14 +27,31 @@ It will be a Python-powered AI assistant that helps gamers make smarter purchase
 
 ---
 
-## 🗂 Project Structure (Planned)
+## 🚀 Status: Phase 1 Completed
+DropHunter's core architecture is live. The bot actively handles Discord integrations, native LLM tool-calling (with self-healing fallback parsing), Supabase state tracking, and local automated cron-scheduling to verify the deepest INR (₹) game deals correctly.
 
-├── bot/ # Telegram/Discord bot integration
-├── cron/ # GitHub cron job scripts
-├── ai/ # Groq function-calling setup
-├── data/ # Game metadata, logs, etc.
-├── utils/ # Helper functions for API requests and processing
-├── main.py # Main entry script
-├── requirements.txt
-└── README.md
+---
 
+## 🧠 Phase 2 Roadmap (In Progress)
+
+We are actively overhauling the system to be a fully observable, stateful AI agent:
+- **LangGraph Integration:** Transitioning from stateless loops to complex, manageable graph-based AI execution.
+- **Conversational Memory:** Storing chat contexts in Supabase with summarized message histories so the bot remembers ongoing trains of thought.
+- **Target Pricing:** Modifying the engine to notify you immediately if a game drops below a custom defined price threshold (e.g., `₹500`), rather than relying strictly on all-time historic lows.
+- **Langfuse Observability:** Deep end-to-end tracing and monitoring for tool execution and LLM latency.
+
+*(Detailed Phase 2 plans can be found in `docs/superpowers/plans/2026-04-05-drophunter-phase-2-roadmap.md`)*
+
+---
+
+## 🗂 Project Structure
+
+├── bot/          # Discord bot integrations and tool functions
+├── cron/         # Automated background scripts for price sweeps
+├── ai/           # Groq LLM integration and fallback logic
+├── db/           # Supabase connection schemas
+├── docs/         # Architectural schemas and roadmap plans
+├── tests/        # Pytest unit tests 
+├── utils/        # ITAD API formatting and webhook utilities
+├── main.py       # Main bot entrypoint
+└── pyproject.toml
