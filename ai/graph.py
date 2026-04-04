@@ -48,7 +48,14 @@ def load_memory(state: GraphState) -> GraphState:
 
 def agent(state: GraphState) -> GraphState:
     provider = get_provider()
-    result = provider.chat_with_tools(messages=state["messages"], tools=TOOLS)
+    # If tool results are already in messages, pass tools=[] to force a text response
+    last_message = state["messages"][-1] if state["messages"] else {}
+    has_tool_results = (
+        last_message.get("role") == "user"
+        and last_message.get("content", "").startswith("Tool results:")
+    )
+    tools = [] if has_tool_results else TOOLS
+    result = provider.chat_with_tools(messages=state["messages"], tools=tools)
 
     if "tool_calls" in result:
         return {
