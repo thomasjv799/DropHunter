@@ -18,7 +18,7 @@ def send_deal_alert(
         raise EnvironmentError("DISCORD_WEBHOOK_URL is not set. Add it to your .env file.")
     message = (
         f"**Deal Alert: {game_title}**\n"
-        f"${price:.2f} on {store} ({cut}% off, was ${regular_price:.2f})\n"
+        f"₹{price:.2f} on {store} ({cut}% off, was ₹{regular_price:.2f})\n"
         f"{ai_commentary}"
     )
     response = requests.post(webhook_url, json={"content": message})

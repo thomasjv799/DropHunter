@@ -12,7 +12,7 @@ from db.client import (
 from db.client import (
     remove_game as db_remove_game,
 )
-from utils.itad import get_best_price, search_game
+from utils.itad import get_best_price, get_all_prices, search_game
 
 logger = logging.getLogger("drophunter.functions")
 
@@ -54,21 +54,17 @@ def get_current_price(title: str) -> str:
     if game is None:
         logger.warning("Game not found on ITAD: %s", title)
         return f"Sorry, '{title}' was not found on IsThereAnyDeal."
-    price_data = get_best_price(game["id"])
-    if price_data is None:
+    prices = get_all_prices(game["id"])
+    if not prices:
         logger.info("No deals found for %s", game["title"])
         return f"No current deals found for **{game['title']}**."
-    logger.info(
-        "Best price for %s: $%.2f on %s (%d%% off)",
-        game["title"],
-        price_data["price"],
-        price_data["store"],
-        price_data["cut"],
-    )
-    return (
-        f"**{game['title']}** — best price: ${price_data['price']:.2f} on {price_data['store']} "
-        f"({price_data['cut']}% off, was ${price_data['regular_price']:.2f})"
-    )
+    
+    lines = [f"**{game['title']}** prices:"]
+    for p in prices[:10]:
+        lines.append(f"• {p['store']}: ₹{p['price']:.2f} ({p['cut']}% off, was ₹{p['regular_price']:.2f})")
+    
+    logger.info("Fetched %d prices for %s", len(prices), game["title"])
+    return "\n".join(lines)
 
 
 def get_recent_deals() -> str:
@@ -78,7 +74,7 @@ def get_recent_deals() -> str:
     if not deals:
         return "No recent deals found."
     lines = "\n".join(
-        f"• **{d['games']['title']}** — ${d['price']:.2f}"
+        f"• **{d['games']['title']}** — ₹{d['price']:.2f}"
         f" (alerted {d['notified_at'][:10] if d['notified_at'] else 'unknown date'})"
         for d in deals
     )
@@ -126,7 +122,7 @@ TOOLS = [
         "function": {
             "name": "list_games",
             "description": "List all games currently on the watchlist.",
-            "parameters": {"type": "object", "properties": {}},
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
@@ -151,7 +147,7 @@ TOOLS = [
         "function": {
             "name": "get_recent_deals",
             "description": "Show recent deal alerts that were sent.",
-            "parameters": {"type": "object", "properties": {}},
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
 ]
