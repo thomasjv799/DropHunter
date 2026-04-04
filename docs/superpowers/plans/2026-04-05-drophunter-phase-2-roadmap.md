@@ -45,3 +45,22 @@ Currently, every query is completely isolated (stateless).
 - **Containerization**: Create a `Dockerfile` to cleanly package the DropHunter bot, LangGraph engine, and Python dependencies.
 - **Docker Compose**: Introduce a `docker-compose.yml` file to handle environment orchestration cleanly, making it trivial to spin up the tracker locally.
 - **Cloud Hosting 24/7**: Transition from local execution/GitHub Actions to deploying the container on a scalable cloud host (e.g., Railway, Render, or a dedicated VPS) to ensure the Discord bot and periodic sweeps remain alive around the clock natively.
+- **Architecture note**: The bot container and GitHub Actions cron are fully decoupled — both connect independently to Supabase, ITAD API, and Discord. No inbound ports needed on the container (Discord uses an outbound WebSocket).
+
+---
+
+## Known Shortcomings to Fix in Phase 2
+
+These are existing issues in the Phase 1 implementation that need to be addressed alongside new features.
+
+### A. Historical Low Accuracy
+The current `get_historical_low()` reads from the local `price_history` table, not ITAD's actual all-time low data. This means the "historical low" is only as accurate as how long the bot has been running. Fix: query ITAD's historical low endpoint directly and use that as the baseline for deal detection.
+
+### B. ITAD Rate Limiting & Retry Logic
+The cron loop calls the ITAD API sequentially per game with no retry or exponential backoff. Transient errors are silently swallowed by a bare `except Exception`. Fix: add retry logic with backoff (e.g., `tenacity`) and surface persistent failures more visibly.
+
+### C. Gemini as Groq Fallback
+`gemini_provider.py` exists but is not wired as an automatic fallback. If Groq is unavailable, the bot fails silently. Fix: implement provider fallback logic in `ai/__init__.py` so Gemini is tried automatically when Groq fails.
+
+### D. Smarter Notification Deduplication
+Notification throttling is purely time-based (`was_recently_notified()`). If a price dips to a low, recovers, then dips again after the cooldown window, the user gets a duplicate alert for the same effective deal. Fix: store the last notified price in `notifications_log` and only alert if the current price is strictly lower than the last notified price — not just lower than the historical low and outside the time window.
