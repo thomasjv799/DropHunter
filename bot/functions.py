@@ -7,7 +7,7 @@ from db.client import (
     remove_game as db_remove_game,
     set_target_price as db_set_target_price,
 )
-from utils.itad import get_all_prices, search_game
+from utils.itad import get_all_prices, get_historical_low, search_game
 
 logger = logging.getLogger("drophunter.functions")
 
@@ -77,6 +77,17 @@ def get_current_price(title: str) -> str:
     
     logger.info("Fetched %d prices for %s", len(prices), game["title"])
     return "\n".join(lines)
+
+
+def get_historical_low_price(title: str) -> str:
+    logger.info("get_historical_low_price called: title=%s", title)
+    game = search_game(title)
+    if game is None:
+        return f"Sorry, '{title}' was not found on IsThereAnyDeal."
+    low = get_historical_low(game["id"])
+    if low is None:
+        return f"No historical low data found for **{game['title']}**."
+    return f"The all-time historical low for **{game['title']}** is ₹{low:.2f}."
 
 
 def get_recent_deals() -> str:
@@ -182,6 +193,23 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "get_historical_low_price",
+            "description": "Get the all-time historical low price for a game from IsThereAnyDeal.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "The name of the game to look up.",
+                    }
+                },
+                "required": ["title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_recent_deals",
             "description": "Show recent deal alerts that were sent.",
             "parameters": {"type": "object", "properties": {}, "required": []},
@@ -196,6 +224,7 @@ _FUNCTION_MAP = {
     "get_current_price": get_current_price,
     "get_recent_deals": get_recent_deals,
     "set_target_price": set_target_price,
+    "get_historical_low_price": get_historical_low_price,
 }
 
 
