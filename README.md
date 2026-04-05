@@ -1,57 +1,136 @@
 # DropHunter
 
-This is a personal fun project so as to make my life easier when I buy games. The idea is to give the Bot some games to track and notify when the price is at the lowest. 
-It will be a Python-powered AI assistant that helps gamers make smarter purchase decisions by tracking game prices and providing buy recommendations. It integrates the [IsThereAnyDeal API](https://isthereanydeal.com/) to fetch the latest game details, pricing history, and discounts. It also supports AI-driven real-time query handling via Groq function calling, and delivers notifications via Telegram or Discord bots.
+A personal Discord bot that tracks game prices and alerts you when deals hit. Built as an AI agent — you talk to it in plain English and it handles the rest.
 
 ---
 
-## 🔧 Features
+## What it does
 
-- 🏷️ Fetch historical and current game pricing using IsThereAnyDeal API
-- 🤖 AI-based function calling with Groq for real-time game data
-- 📈 Intelligent buy recommendations based on price history trends
-- ⏰ Scheduled as a GitHub Actions cron job for daily or periodic checks
-- 📲 Sends deal notifications and user-triggered queries via Telegram or Discord
-
----
-
-## 🧠 Architecture Overview
-
-- **Backend:** Python
-- **Scheduler:** GitHub Actions (Cron)
-- **APIs Used:**
-  - [IsThereAnyDeal API](https://isthereanydeal.com/)
-  - [Groq API](https://groq.com/)
-- **Notifications:** Telegram Bot or Discord Webhook/Bot
-- **AI Functions:** Function calling to get live pricing or recommendations
+- **Track games** — tell the bot to watch a game and it monitors prices across all storefronts via [IsThereAnyDeal](https://isthereanydeal.com/)
+- **Custom price targets** — set a threshold (e.g. "alert me when Elden Ring drops below ₹500") instead of waiting for the all-time low
+- **Daily price sweeps** — a background cron job checks every tracked game and fires a Discord webhook alert with AI commentary when a deal is found
+- **Conversational memory** — the bot remembers your conversation across sessions using Supabase-backed chat history and rolling summarization
+- **Multi-step reasoning** — powered by LangGraph, the bot can call multiple tools in sequence to answer complex questions
 
 ---
 
-## 🚀 Status: Phase 1 Completed
-DropHunter's core architecture is live. The bot actively handles Discord integrations, native LLM tool-calling (with self-healing fallback parsing), Supabase state tracking, and local automated cron-scheduling to verify the deepest INR (₹) game deals correctly.
+## Architecture
+
+```
+Discord message
+      │
+      ▼
+ bot/client.py          asyncio.to_thread → run_graph()
+      │
+      ▼
+ ai/graph.py            LangGraph StateGraph
+  ├── load_memory       fetch chat history + summary from Supabase
+  ├── agent             Groq (Llama-3.3-70b) with tool calling, Gemini fallback
+  ├── execute_tools     dispatch bot functions (add/remove/list/price/deals)
+  └── save_memory       persist turn, rolling summarization via Gemini
+      │
+      ▼
+ cron/price_check.py    background daemon — sweeps all tracked games daily
+      │
+      ▼
+ utils/discord.py       webhook alert with Groq AI commentary
+```
+
+**AI layer:** `GroqProvider` (primary) + `GeminiProvider` (fallback). Both implement the `AIProvider` ABC. The `_FallbackProvider` wrapper auto-switches on failure.
+
+**Database:** Supabase (PostgreSQL) with four tables — `games`, `price_history`, `notifications_log`, `chat_messages`, `chat_summary`.
+
+**Observability:** Full end-to-end tracing via [Langfuse](https://langfuse.com/) — every conversation produces a trace with child spans per graph node, LLM generations with token counts, and per-tool spans.
 
 ---
 
-## 🧠 Phase 2 Roadmap (In Progress)
+## Bot commands (natural language)
 
-We are actively overhauling the system to be a fully observable, stateful AI agent:
-- **LangGraph Integration:** Transitioning from stateless loops to complex, manageable graph-based AI execution.
-- **Conversational Memory:** Storing chat contexts in Supabase with summarized message histories so the bot remembers ongoing trains of thought.
-- **Target Pricing:** Modifying the engine to notify you immediately if a game drops below a custom defined price threshold (e.g., `₹500`), rather than relying strictly on all-time historic lows.
-- **Langfuse Observability:** Deep end-to-end tracing and monitoring for tool execution and LLM latency.
-
-*(Detailed Phase 2 plans can be found in `docs/superpowers/plans/2026-04-05-drophunter-phase-2-roadmap.md`)*
+| What you say | What happens |
+|---|---|
+| "track Elden Ring" | adds to watchlist, alerts on historical low |
+| "track Hades under ₹500" | adds with custom price target |
+| "what games am I tracking?" | lists watchlist with targets |
+| "remove Hollow Knight" | removes from watchlist |
+| "what's the price of Hades?" | live prices across all stores |
+| "what's the historical low for Celeste?" | all-time low from ITAD |
+| "show recent deals" | last notified deals |
+| "set target for Elden Ring to ₹800" | updates price threshold |
 
 ---
 
-## 🗂 Project Structure
+## Stack
 
-├── bot/          # Discord bot integrations and tool functions
-├── cron/         # Automated background scripts for price sweeps
-├── ai/           # Groq LLM integration and fallback logic
-├── db/           # Supabase connection schemas
-├── docs/         # Architectural schemas and roadmap plans
-├── tests/        # Pytest unit tests 
-├── utils/        # ITAD API formatting and webhook utilities
-├── main.py       # Main bot entrypoint
-└── pyproject.toml
+| Layer | Tech |
+|---|---|
+| Bot | discord.py |
+| AI | Groq (Llama-3.3-70b-versatile), Google Gemini (gemini-3-flash-preview) |
+| Agent framework | LangGraph |
+| Prices | IsThereAnyDeal API v3 (IN region, INR) |
+| Database | Supabase (PostgreSQL) |
+| Observability | Langfuse v3 |
+| Hosting | Render (Web Service) |
+| Retry logic | tenacity (exponential backoff) |
+| Tests | pytest + pytest-mock |
+
+---
+
+## Project structure
+
+```
+ai/           AIProvider ABC, GroqProvider, GeminiProvider, LangGraph graph
+bot/          Discord client, tool function definitions
+cron/         Background price sweep daemon
+db/           Supabase client, schema.sql
+utils/        ITAD API helpers, Discord webhook sender
+tests/        Pytest unit tests
+main.py       Entrypoint — starts bot + health check HTTP server
+Dockerfile    Python 3.11-slim image
+```
+
+---
+
+## Running locally
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Copy and fill in env vars
+cp .env.example .env
+
+# Run the bot
+python main.py
+
+# Run tests
+pytest
+
+# Lint / format
+ruff check .
+ruff format .
+```
+
+**Required environment variables:**
+
+```
+SUPABASE_URL=
+SUPABASE_KEY=
+ITAD_API_KEY=
+GROQ_API_KEY=
+GEMINI_API_KEY=
+DISCORD_BOT_TOKEN=
+DISCORD_WEBHOOK_URL=
+DISCORD_CHANNEL_ID=
+AI_PROVIDER=groq
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+LANGFUSE_HOST=https://us.cloud.langfuse.com
+```
+
+---
+
+## Deployment
+
+Runs on Render as a Web Service (free tier). The bot starts an HTTP server on port 8080 alongside Discord so Render's health checks pass.
+
+The price sweep cron can be triggered via GitHub Actions on a schedule, or run locally with `python -m cron.price_check`.
