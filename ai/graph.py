@@ -1,6 +1,7 @@
 import logging
 from typing import Literal, TypedDict
 
+from langfuse import get_client, observe
 from langgraph.graph import END, StateGraph
 
 from ai import get_provider
@@ -30,6 +31,7 @@ class GraphState(TypedDict):
     pending_tool_calls: list[dict]
 
 
+@observe()
 def load_memory(state: GraphState) -> GraphState:
     context = get_chat_context(state["user_id"])
 
@@ -46,6 +48,7 @@ def load_memory(state: GraphState) -> GraphState:
     return {**state, "messages": new_messages}
 
 
+@observe(as_type="generation")
 def agent(state: GraphState) -> GraphState:
     provider = get_provider()
     # If tool results are already in messages, pass tools=[] to force a text response
@@ -56,6 +59,15 @@ def agent(state: GraphState) -> GraphState:
     )
     tools = [] if has_tool_results else TOOLS
     result = provider.chat_with_tools(messages=state["messages"], tools=tools)
+
+    usage = result.get("usage", {})
+    if usage:
+        get_client().update_current_generation(
+            usage_details={
+                "input": usage.get("input_tokens", 0),
+                "output": usage.get("output_tokens", 0),
+            }
+        )
 
     if "tool_calls" in result:
         return {
@@ -70,6 +82,16 @@ def agent(state: GraphState) -> GraphState:
     }
 
 
+@observe()
+def _run_tool(name: str, arguments: dict) -> str:
+    """Execute a single tool call and record it as a child Langfuse span."""
+    get_client().update_current_span(name=f"tool:{name}", input=arguments)
+    result = dispatch(name, arguments)
+    get_client().update_current_span(output=result)
+    return result
+
+
+@observe()
 def execute_tools(state: GraphState) -> GraphState:
     if state["tool_iteration"] >= MAX_TOOL_ITERATIONS:
         return {
@@ -81,7 +103,7 @@ def execute_tools(state: GraphState) -> GraphState:
     tool_responses = []
     for tc in state["pending_tool_calls"]:
         try:
-            result = dispatch(tc["name"], tc.get("arguments") or {})
+            result = _run_tool(tc["name"], tc.get("arguments") or {})
             tool_responses.append(result)
         except Exception as exc:
             tool_responses.append(f"Error in {tc['name']}: {exc}")
@@ -97,6 +119,7 @@ def execute_tools(state: GraphState) -> GraphState:
     }
 
 
+@observe()
 def save_memory(state: GraphState) -> GraphState:
     try:
         save_turn(state["user_id"], state["user_message"], state["final_reply"])
@@ -144,7 +167,9 @@ def _get_graph():
     return _graph
 
 
+@observe()
 def run_graph(user_id: str, user_message: str) -> str:
+    get_client().update_current_trace(user_id=user_id, input=user_message)
     initial_state: GraphState = {
         "user_id": user_id,
         "user_message": user_message,
@@ -154,4 +179,5 @@ def run_graph(user_id: str, user_message: str) -> str:
         "pending_tool_calls": [],
     }
     result = _get_graph().invoke(initial_state)
+    get_client().update_current_trace(output=result["final_reply"])
     return result["final_reply"]
