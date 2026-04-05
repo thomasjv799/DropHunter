@@ -2,7 +2,7 @@ import os
 
 import google.generativeai as genai
 from dotenv import load_dotenv
-from langfuse import observe, get_client
+from langfuse import get_client, observe
 
 from ai.base import AIProvider
 
