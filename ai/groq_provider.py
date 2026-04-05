@@ -54,7 +54,7 @@ class GroqProvider(AIProvider):
 
                     try:
                         args = json.loads(args_str) if args_str else {}
-                        return {"tool_calls": [{"name": name, "arguments": args}], "usage": {}}
+                        return {"tool_calls": [{"name": name, "arguments": args}], "usage": {"input_tokens": 0, "output_tokens": 0}}
                     except json.JSONDecodeError:
                         pass
             raise
