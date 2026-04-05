@@ -2,6 +2,8 @@ import logging
 
 from db.client import (
     add_game as db_add_game,
+    clear_memory as db_clear_memory,
+    force_summarize as db_force_summarize,
     get_games as db_get_games,
     get_recent_deals as db_get_recent_deals,
     remove_game as db_remove_game,
@@ -215,7 +217,33 @@ TOOLS = [
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "clear_memory",
+            "description": "Clear and summarize the conversation history. Use when the user asks to 'clear memory', 'reset conversation', 'start fresh', or similar. This summarizes the key facts and removes old messages.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "The user's ID (passed automatically).",
+                    }
+                },
+                "required": ["user_id"],
+            },
+        },
+    },
 ]
+
+
+def clear_memory(user_id: str) -> str:
+    """Clear memory via tool call."""
+    logger.info("clear_memory called for user_id=%s", user_id)
+    from ai.gemini_provider import GeminiProvider
+    summary = db_force_summarize(user_id, GeminiProvider())
+    return f"Memory cleared and summarized. Key facts retained: {summary[:300]}"
+
 
 _FUNCTION_MAP = {
     "add_game": add_game,
@@ -225,6 +253,7 @@ _FUNCTION_MAP = {
     "get_recent_deals": get_recent_deals,
     "set_target_price": set_target_price,
     "get_historical_low_price": get_historical_low_price,
+    "clear_memory": clear_memory,
 }
 
 

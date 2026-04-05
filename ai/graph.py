@@ -1,13 +1,23 @@
 import logging
+import os
 from typing import Literal, TypedDict
 
-from langfuse import get_client, observe
+from dotenv import load_dotenv
+from langfuse import Langfuse, get_client, observe
 from langgraph.graph import END, StateGraph
 
 from ai import get_provider
 from ai.gemini_provider import GeminiProvider
 from bot.functions import TOOLS, dispatch
 from db.client import get_chat_context, save_turn, summarize_if_needed
+
+# --- Langfuse initialization (must happen before @observe is used) ---
+load_dotenv()
+_langfuse = Langfuse(
+    secret_key=os.environ.get("LANGFUSE_SECRET_KEY"),
+    public_key=os.environ.get("LANGFUSE_PUBLIC_KEY"),
+    host=os.environ.get("LANGFUSE_HOST", "https://us.cloud.langfuse.com"),
+)
 
 logger = logging.getLogger("drophunter.graph")
 
@@ -51,11 +61,13 @@ def load_memory(state: GraphState) -> GraphState:
 @observe(as_type="generation")
 def agent(state: GraphState) -> GraphState:
     provider = get_provider()
-    # If tool results are already in messages, pass tools=[] to force a text response
-    last_message = state["messages"][-1] if state["messages"] else {}
-    has_tool_results = (
-        last_message.get("role") == "user"
-        and last_message.get("content", "").startswith("Tool results:")
+
+    # Pass tools only on the first call. After tool results are back, force a
+    # plain-text response — this prevents infinite retry loops while still
+    # supporting multiple tools called in a single batch (e.g. add + set_target_price).
+    has_tool_results = any(
+        m.get("role") == "user" and m.get("content", "").startswith("Tool results:")
+        for m in state["messages"]
     )
     tools = [] if has_tool_results else TOOLS
     result = provider.chat_with_tools(messages=state["messages"], tools=tools)
@@ -181,5 +193,12 @@ def run_graph(user_id: str, user_message: str) -> str:
         "final_reply": "",
         "pending_tool_calls": [],
     }
-    result = _get_graph().invoke(initial_state)
-    return result["final_reply"]
+    try:
+        result = _get_graph().invoke(initial_state)
+        return result["final_reply"]
+    finally:
+        # Flush Langfuse to ensure traces are sent
+        try:
+            _langfuse.flush()
+        except Exception as exc:
+            logger.debug("Langfuse flush failed: %s", exc)

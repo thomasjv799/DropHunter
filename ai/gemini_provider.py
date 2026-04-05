@@ -1,3 +1,4 @@
+import logging
 import os
 
 import google.generativeai as genai
@@ -6,7 +7,8 @@ from langfuse import get_client, observe
 
 from ai.base import AIProvider
 
-_MODEL = "gemini-3-flash-preview"
+_MODEL = "gemini-2.5-flash"
+logger = logging.getLogger("drophunter.gemini")
 
 
 def _to_gemini_tools(tools: list) -> list:
@@ -74,7 +76,21 @@ class GeminiProvider(AIProvider):
         )
         history = _to_gemini_history(messages)
         chat = model.start_chat(history=history)
-        response = chat.send_message(messages[-1]["content"])
+
+        try:
+            response = chat.send_message(messages[-1]["content"])
+        except Exception as exc:
+            # Handle MALFORMED_FUNCTION_CALL — retry without tools
+            if "MALFORMED_FUNCTION_CALL" in str(exc):
+                logger.warning("Gemini malformed function call, retrying without tools: %s", exc)
+                model_no_tools = genai.GenerativeModel(
+                    self._model_name,
+                    system_instruction=system_instruction,
+                )
+                chat_no_tools = model_no_tools.start_chat(history=history)
+                response = chat_no_tools.send_message(messages[-1]["content"])
+            else:
+                raise
 
         usage = {}
         if response.usage_metadata is not None:
