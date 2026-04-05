@@ -10,6 +10,6 @@ class AIProvider(ABC):
     def chat_with_tools(self, messages: list[dict], tools: list[dict]) -> dict:
         """
         Send messages with tool definitions. Returns either:
-          {"text": "..."}                             — plain response
-          {"tool_calls": [{"name": "...", "arguments": {...}}, ...]}  — tool invocation
+          {"text": "...", "usage": {"input_tokens": int, "output_tokens": int}}  — plain response
+          {"tool_calls": [...], "usage": {"input_tokens": int, "output_tokens": int}}  — tool invocation
         """
