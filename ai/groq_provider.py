@@ -40,9 +40,6 @@ class GroqProvider(AIProvider):
             err = body.get("error", {})
             if err.get("code") == "tool_use_failed" and "failed_generation" in err:
                 failed_gen = err["failed_generation"]
-                # Try to salvage different malformed formats:
-                # <function=get_current_price{"title": "..."}</function>
-                # <function=get_current_price {"title": "..."}>
                 match = re.search(r"<function=([a-zA-Z0-9_]+)\s*(.*)", failed_gen)
                 if match:
                     name = match.group(1)
@@ -54,10 +51,17 @@ class GroqProvider(AIProvider):
 
                     try:
                         args = json.loads(args_str) if args_str else {}
-                        return {"tool_calls": [{"name": name, "arguments": args}]}
+                        return {"tool_calls": [{"name": name, "arguments": args}], "usage": {}}
                     except json.JSONDecodeError:
                         pass
             raise
+
+        usage = {}
+        if response.usage:
+            usage = {
+                "input_tokens": response.usage.prompt_tokens,
+                "output_tokens": response.usage.completion_tokens,
+            }
 
         message = response.choices[0].message
         if message.tool_calls:
@@ -75,5 +79,5 @@ class GroqProvider(AIProvider):
                         "arguments": arguments,
                     }
                 )
-            return {"tool_calls": tool_calls}
-        return {"text": message.content}
+            return {"tool_calls": tool_calls, "usage": usage}
+        return {"text": message.content, "usage": usage}
