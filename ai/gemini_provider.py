@@ -2,6 +2,7 @@ import os
 
 import google.generativeai as genai
 from dotenv import load_dotenv
+from langfuse import observe, get_client
 
 from ai.base import AIProvider
 
@@ -43,15 +44,24 @@ class GeminiProvider(AIProvider):
         genai.configure(api_key=api_key)
         self._model_name = _MODEL
 
+    @observe(as_type="generation")
     def generate_text(self, prompt: str) -> str:
         model = genai.GenerativeModel(self._model_name)
         response = model.generate_content(prompt)
+        get_client().update_current_generation(
+            model=self._model_name,
+            input=prompt,
+            output=response.text,
+            usage_details={
+                "input": response.usage_metadata.prompt_token_count,
+                "output": response.usage_metadata.candidates_token_count,
+            },
+        )
         return response.text
 
     def chat_with_tools(self, messages: list, tools: list) -> dict:
         if not messages:
             raise ValueError("messages list cannot be empty")
-        # Extract system message and pass as system_instruction
         system_instruction = None
         if messages and messages[0]["role"] == "system":
             system_instruction = messages[0]["content"]
@@ -66,15 +76,22 @@ class GeminiProvider(AIProvider):
         chat = model.start_chat(history=history)
         response = chat.send_message(messages[-1]["content"])
 
+        usage = {}
+        if response.usage_metadata is not None:
+            usage = {
+                "input_tokens": response.usage_metadata.prompt_token_count,
+                "output_tokens": response.usage_metadata.candidates_token_count,
+            }
+
         tool_calls = [
             {"name": part.function_call.name, "arguments": dict(part.function_call.args)}
             for part in response.parts
             if part.function_call.name
         ]
         if tool_calls:
-            return {"tool_calls": tool_calls}
+            return {"tool_calls": tool_calls, "usage": usage}
         try:
-            return {"text": response.text}
+            return {"text": response.text, "usage": usage}
         except ValueError as exc:
             raise ValueError(
                 f"Gemini returned no usable text (response may be blocked): {exc}"
