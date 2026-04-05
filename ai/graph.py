@@ -86,7 +86,11 @@ def agent(state: GraphState) -> GraphState:
 def _run_tool(name: str, arguments: dict) -> str:
     """Execute a single tool call and record it as a child Langfuse span."""
     get_client().update_current_span(name=f"tool:{name}", input=arguments)
-    result = dispatch(name, arguments)
+    try:
+        result = dispatch(name, arguments)
+    except Exception as exc:
+        get_client().update_current_span(output=f"Error: {exc}", level="ERROR")
+        raise
     get_client().update_current_span(output=result)
     return result
 
