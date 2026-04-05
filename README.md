@@ -1,6 +1,7 @@
 # DropHunter
 
 A personal Discord bot that tracks game prices and alerts you when deals hit. Built as an AI agent — you talk to it in plain English and it handles the rest.
+<img width="2442" height="1423" alt="image" src="https://github.com/user-attachments/assets/023ac522-b964-4e54-9fda-0fc24faded6f" />
 
 ---
 
