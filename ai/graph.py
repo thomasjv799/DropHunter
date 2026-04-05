@@ -173,7 +173,6 @@ def _get_graph():
 
 @observe()
 def run_graph(user_id: str, user_message: str) -> str:
-    get_client().update_current_trace(user_id=user_id, input=user_message)
     initial_state: GraphState = {
         "user_id": user_id,
         "user_message": user_message,
@@ -183,5 +182,4 @@ def run_graph(user_id: str, user_message: str) -> str:
         "pending_tool_calls": [],
     }
     result = _get_graph().invoke(initial_state)
-    get_client().update_current_trace(output=result["final_reply"])
     return result["final_reply"]
