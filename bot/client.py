@@ -42,7 +42,8 @@ async def on_ready():
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
-    if message.channel.id != _get_channel_id():
+    is_dm = isinstance(message.channel, discord.DMChannel)
+    if not is_dm and message.channel.id != _get_channel_id():
         return
 
     user_id = str(message.author.id)
