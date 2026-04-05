@@ -37,6 +37,8 @@ def process_game(game: dict) -> None:
         store=price_data["store"],
     )
 
+    historical_low = get_historical_low(game["itad_id"])
+
     target_price = game.get("target_price")
     if target_price is not None:
         threshold = float(target_price)
@@ -46,7 +48,6 @@ def process_game(game: dict) -> None:
             title, threshold, price_data["price"], is_deal,
         )
     else:
-        historical_low = get_historical_low(game["itad_id"])
         if historical_low is None:
             logger.warning("[%s] No ITAD historical low available, skipping.", title)
             return
@@ -71,10 +72,11 @@ def process_game(game: dict) -> None:
 
     logger.info("[%s] Deal detected! Generating AI commentary...", title)
     provider = get_provider()
+    low_info = f" Historical low: ₹{historical_low}." if historical_low is not None else ""
     commentary = provider.generate_text(
         f"Write a one-sentence buy recommendation for '{title}'. "
         f"Current price: ₹{price_data['price']} on {price_data['store']} "
-        f"({price_data['cut']}% off). Historical low: ₹{historical_low}."
+        f"({price_data['cut']}% off).{low_info}"
     )
 
     send_deal_alert(

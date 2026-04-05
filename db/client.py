@@ -51,27 +51,56 @@ def add_game(title: str, itad_id: str, target_price: Optional[float] = None) -> 
     return result.data[0]
 
 
+def _normalize(text: str) -> str:
+    """Strip non-alphanumeric chars for fuzzy title comparison."""
+    import re
+    return re.sub(r'[^a-z0-9 ]', '', text.lower()).strip()
+
+
+def _find_game_by_title(title: str) -> Optional[dict]:
+    """Find a game in the watchlist by fuzzy title match. Returns the row or None."""
+    games = get_games()
+    norm_query = _normalize(title)
+    # Try exact normalized match first, then substring match
+    for g in games:
+        if _normalize(g["title"]) == norm_query:
+            return g
+    for g in games:
+        if norm_query in _normalize(g["title"]) or _normalize(g["title"]) in norm_query:
+            return g
+    return None
+
+
 def set_target_price(title: str, target_price: Optional[float]) -> bool:
     logger.info("Setting target price for %s: %s", title, target_price)
+    game = _find_game_by_title(title)
+    if not game:
+        logger.warning("No game matched '%s' for target price update", title)
+        return False
     result = (
         _get_client()
         .table("games")
         .update({"target_price": target_price})
-        .ilike("title", title)
+        .eq("id", game["id"])
         .execute()
     )
     updated = len(result.data) > 0
-    logger.info("Target price updated for %s: %s", title, updated)
+    if updated:
+        logger.info("Target price updated for '%s' (matched '%s'): %s", title, game["title"], target_price)
     return updated
 
 
 def remove_game(title: str) -> bool:
     logger.info("Removing game: %s", title)
+    game = _find_game_by_title(title)
+    if not game:
+        logger.warning("No game matched '%s' for removal", title)
+        return False
     result = (
-        _get_client().table("games").delete().ilike("title", title).execute()
+        _get_client().table("games").delete().eq("id", game["id"]).execute()
     )
     removed = len(result.data) > 0
-    logger.info("Game removed: %s (found=%s)", title, removed)
+    logger.info("Game removed: %s (found=%s)", game["title"], removed)
     return removed
 
 
@@ -270,3 +299,59 @@ def summarize_if_needed(user_id: str, gemini_provider) -> None:
     ids_to_delete = [m["id"] for m in oldest.data]
     _get_client().table("chat_messages").delete().in_("id", ids_to_delete).execute()
     logger.info("Summarized %d messages for user %s", len(ids_to_delete), user_id)
+
+
+def force_summarize(user_id: str, gemini_provider) -> str:
+    """Summarize ALL messages for a user, store summary, and delete messages. Returns the summary."""
+    all_messages = (
+        _get_client()
+        .table("chat_messages")
+        .select("id,role,content")
+        .eq("user_id", user_id)
+        .order("created_at", desc=False)
+        .execute()
+    )
+    if not all_messages.data:
+        return "No conversation history to summarize."
+
+    summary_result = (
+        _get_client().table("chat_summary").select("summary").eq("user_id", user_id).execute()
+    )
+    existing_summary = summary_result.data[0]["summary"] if summary_result.data else "None"
+
+    messages_text = "\n".join(f"{m['role']}: {m['content']}" for m in all_messages.data)
+    prompt = (
+        "You are a memory manager for a Discord game deal assistant called DropHunter.\n"
+        "Summarize the following conversation into a concise paragraph (max 200 words).\n"
+        "Focus ONLY on factual information:\n"
+        "- Games the user is currently tracking (with their exact titles)\n"
+        "- Target prices they have set\n"
+        "- Any preferences they expressed\n"
+        "Do NOT include any hallucinated or assumed information. Only include facts from the messages.\n"
+        "Merge with the existing summary if provided.\n\n"
+        f"Existing summary: {existing_summary}\n\n"
+        f"Messages to summarize:\n{messages_text}"
+    )
+
+    new_summary = gemini_provider.generate_text(prompt)
+
+    _get_client().table("chat_summary").upsert(
+        {
+            "user_id": user_id,
+            "summary": new_summary,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        },
+        on_conflict="user_id",
+    ).execute()
+
+    ids_to_delete = [m["id"] for m in all_messages.data]
+    _get_client().table("chat_messages").delete().in_("id", ids_to_delete).execute()
+    logger.info("Force-summarized %d messages for user %s", len(ids_to_delete), user_id)
+    return new_summary
+
+
+def clear_memory(user_id: str) -> None:
+    """Delete ALL chat messages and summary for a user (full reset)."""
+    _get_client().table("chat_messages").delete().eq("user_id", user_id).execute()
+    _get_client().table("chat_summary").delete().eq("user_id", user_id).execute()
+    logger.info("Cleared all memory for user %s", user_id)

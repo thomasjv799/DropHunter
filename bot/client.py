@@ -4,6 +4,7 @@ import os
 from typing import Optional
 
 import discord
+from discord import app_commands
 from dotenv import load_dotenv
 
 from ai.graph import run_graph
@@ -30,12 +31,18 @@ intents = discord.Intents.default()
 intents.message_content = True
 
 bot = discord.Client(intents=intents)
+tree = app_commands.CommandTree(bot)
 
 
 @bot.event
 async def on_ready():
     logger.info("DropHunter bot ready as %s", bot.user)
     logger.info("Listening on channel ID: %s", _get_channel_id())
+    try:
+        synced = await tree.sync()
+        logger.info("Synced %d slash command(s)", len(synced))
+    except Exception as exc:
+        logger.error("Failed to sync slash commands: %s", exc)
 
 
 @bot.event
@@ -61,6 +68,53 @@ async def on_message(message: discord.Message):
         )
 
     await message.channel.send(reply[:2000])
+
+
+@tree.command(name="clearmemory", description="Summarize and clear your conversation history to reduce hallucinations")
+async def clearmemory(interaction: discord.Interaction):
+    """Summarize all chat history into key facts and clear raw messages."""
+    await interaction.response.defer(thinking=True)
+    user_id = str(interaction.user.id)
+
+    try:
+        from ai.gemini_provider import GeminiProvider
+        from db.client import force_summarize
+
+        summary = await asyncio.to_thread(force_summarize, user_id, GeminiProvider())
+        await interaction.followup.send(
+            f"✅ **Memory cleared and summarized!**\n\n"
+            f"Your conversation history has been condensed into key facts. "
+            f"The bot will remember important details (tracked games, target prices) "
+            f"but forget the raw conversation.\n\n"
+            f"**Summary saved:**\n> {summary[:500]}"
+        )
+    except Exception as exc:
+        logger.error("Failed to clear memory for %s: %s", user_id, exc, exc_info=True)
+        await interaction.followup.send(
+            f"⚠️ Failed to clear memory.\n```\n{type(exc).__name__}: {exc}\n```"
+        )
+
+
+@tree.command(name="resetmemory", description="Completely wipe your conversation history (full reset)")
+async def resetmemory(interaction: discord.Interaction):
+    """Delete ALL chat messages and summary — complete fresh start."""
+    await interaction.response.defer(thinking=True)
+    user_id = str(interaction.user.id)
+
+    try:
+        from db.client import clear_memory
+
+        await asyncio.to_thread(clear_memory, user_id)
+        await interaction.followup.send(
+            "🗑️ **Memory fully reset!**\n\n"
+            "All your conversation history and summaries have been deleted. "
+            "The bot is starting fresh with no memory of previous conversations."
+        )
+    except Exception as exc:
+        logger.error("Failed to reset memory for %s: %s", user_id, exc, exc_info=True)
+        await interaction.followup.send(
+            f"⚠️ Failed to reset memory.\n```\n{type(exc).__name__}: {exc}\n```"
+        )
 
 
 def run():

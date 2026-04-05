@@ -8,8 +8,14 @@ from ai.base import AIProvider
 logger = logging.getLogger("drophunter.ai")
 
 
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Check if the exception is a rate limit error (don't waste fallback quota on these)."""
+    err_str = str(exc).lower()
+    return "rate_limit" in err_str or "429" in err_str or "quota" in err_str
+
+
 class _FallbackProvider(AIProvider):
-    """Wraps a primary and fallback provider. On any exception from primary, uses fallback."""
+    """Wraps a primary and fallback provider. Falls back on non-rate-limit errors only."""
 
     def __init__(self, primary: AIProvider, fallback: AIProvider):
         self._primary = primary
@@ -19,6 +25,9 @@ class _FallbackProvider(AIProvider):
         try:
             return self._primary.generate_text(prompt)
         except Exception as exc:
+            if _is_rate_limit_error(exc):
+                logger.warning("Primary provider rate-limited, NOT falling back: %s", exc)
+                raise
             logger.warning("Primary provider failed, falling back to Gemini: %s", exc)
             return self._fallback.generate_text(prompt)
 
@@ -26,6 +35,9 @@ class _FallbackProvider(AIProvider):
         try:
             return self._primary.chat_with_tools(messages, tools)
         except Exception as exc:
+            if _is_rate_limit_error(exc):
+                logger.warning("Primary provider rate-limited, NOT falling back: %s", exc)
+                raise
             logger.warning("Primary provider failed, falling back to Gemini: %s", exc)
             return self._fallback.chat_with_tools(messages, tools)
 
