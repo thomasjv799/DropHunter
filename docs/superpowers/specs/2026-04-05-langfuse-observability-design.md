@@ -35,7 +35,9 @@ Trace: run_graph (user_id, user_message)
 
 ## Approach
 
-Use Langfuse Python SDK's `@observe()` decorator for automatic trace/span hierarchy. Manual `langfuse.generation()` calls inside `agent` and `save_memory` for LLM-specific metadata.
+Use Langfuse Python SDK's `@observe()` decorator for automatic trace/span hierarchy. Use `get_client().update_current_generation()` / `update_current_span()` / `update_current_trace()` for LLM-specific metadata.
+
+**Note:** Implemented against **langfuse v3** (installed: 3.7.0). v3 uses `from langfuse import observe, get_client` — the `langfuse.decorators` module from v2 does not exist. The `usage` parameter for generations is `usage_details={"input": int, "output": int}` (not `usage=`).
 
 ---
 
