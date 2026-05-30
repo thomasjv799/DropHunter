@@ -32,7 +32,8 @@ There is **no ITAD-equivalent for watches.** This feature adds a parallel path f
 | Seller trust | Curated authentic sellers; v1 = swisstimehouse only | User wants authentic sellers, not marketplaces/gray-market |
 | Multi-source storage | **Wide columns** (`swisstimehouse_price`, `myntra_price`) | Matches the mental model; lowest available price wins |
 | Unavailable source | Stored as `NULL` | A blocked/absent source must not break the alert; lowest *available* price drives it |
-| Price extraction | Deterministic HTML parse (BeautifulSoup), not LLM | Runs every sweep; must be free/fast; isolated and logs loudly on layout change |
+| Fetch | `cloudscraper` (not plain `requests`) | swisstimehouse is behind Cloudflare; plain `requests` returns 403. `cloudscraper` passes the challenge (verified, HTTP 200) |
+| Price extraction | Parse embedded `schema.org` JSON-LD, not visible HTML or LLM | The page embeds a clean `Product` block (`name`, `sku`, `brand.name`, `offers.price`); far more stable than scraping price text. Runs every sweep, free and fast |
 | Target price | **Required** for watches | No historical-low fallback exists |
 
 ## Architecture
@@ -99,10 +100,11 @@ create index if not exists idx_watch_notifications_log_watch_id on watch_notific
 
 - `fetch_swisstimehouse(url) -> dict | None`
   - Validates the URL host is `swisstimehouse.com`.
-  - Fetches the page with `requests` (existing dep) and a normal browser User-Agent.
-  - Parses with BeautifulSoup (new dep) targeting the price element. The product page has **no JSON-LD / schema.org markup** — the price is plain HTML text (observed: regular `₹ 49,995`, reduced `₹ 34,997`, "Save 30%"). The parser extracts the reduced (current) price and the regular price, and the product title (for `name`/`brand`/`reference`).
-  - Returns `{name, brand, reference, price, regular_price}`, or `None` if the price element cannot be found — logging loudly at WARNING so a layout change is obvious.
-  - Isolated in one small function so a future site-HTML change is a one-spot fix.
+  - Fetches the page with `cloudscraper` (new dep) — plain `requests` is blocked by Cloudflare (403); `cloudscraper` passes the challenge (verified, HTTP 200).
+  - Parses the embedded `schema.org` JSON-LD: finds `<script type="application/ld+json">` blocks (via BeautifulSoup), `json.loads` each, and selects the object whose `@type == "Product"`. Reads `name`, `brand.name`, `sku` (→ `reference`), and `offers.price` (→ `price`; the field may be an int or a string, so coerce to `float`). Confirmed live values: `name="Casio G1714 - GM-B2100SD-1CDR G-Shock Watch"`, `brand="Casio"`, `sku="G1714"`, `offers.price=34997`, `offers.priceCurrency="INR"`.
+  - Returns `{name, brand, reference, price}`, or `None` if the request fails or no `Product` JSON-LD with a price is found — logging loudly at WARNING so a Cloudflare block or markup change is obvious.
+  - Isolated in one small function so a future site change is a one-spot fix.
+  - **Note:** `regular_price` is intentionally dropped — JSON-LD exposes only the current price, and target-based alerts don't need a list price.
 - `fetch_myntra(url)` — **deferred**, not implemented in v1 (documented stub at most). Myntra is JS-rendered and bot-protected; it will require spoofed headers, its internal product JSON, or a headless browser. When built, it returns a price or `None`.
 
 ### `bot/functions.py` (new tools, registered in `TOOLS` + `_FUNCTION_MAP`)
@@ -153,9 +155,12 @@ Unit tests parallel to the existing suite:
 - Lowest-available-price selection with `None` handling (one source NULL, both NULL).
 - `process_watch` target + dedup logic with mocked fetch and DB (alerts at/below target, suppresses when not lower than last notified, skips when price unavailable).
 
-## New Dependency
+## New Dependencies
 
-- `beautifulsoup4` (added to `requirements.txt` / `pyproject.toml`). `requests` is already present.
+- `cloudscraper` — passes swisstimehouse's Cloudflare challenge (plain `requests` 403s).
+- `beautifulsoup4` — locating the `<script type="application/ld+json">` blocks.
+
+Both added to `requirements.txt`. `requests` is already present (pulled in transitively too).
 
 ## Deferred Work (v2+)
 
