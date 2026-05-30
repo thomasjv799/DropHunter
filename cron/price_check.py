@@ -192,7 +192,7 @@ def run(games: bool = True, watches: bool = True) -> None:
     logger.info("Price check run complete.")
 
 
-def _parse_scope(argv: list) -> tuple:
+def _parse_scope(argv: list[str]) -> tuple[bool, bool]:
     """Return (run_games, run_watches). No --games/--watches flag means run both."""
     flags = set(argv)
     if "--games" in flags or "--watches" in flags:
