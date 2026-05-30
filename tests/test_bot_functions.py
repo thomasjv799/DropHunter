@@ -210,3 +210,26 @@ def test_dispatch_routes_to_add_watch(mocker):
         {"url": "https://www.swisstimehouse.com/casio-g1714", "target_price": 30000.0},
     )
     assert "Casio G1714" in result
+
+
+def test_get_watch_price_not_found(mocker):
+    from bot.functions import get_watch_price
+
+    mocker.patch("bot.functions.db_find_watch_by_name", return_value=None)
+    result = get_watch_price("Unknown Watch")
+    assert "isn't on your watch list" in result.lower() or "not" in result.lower()
+
+
+def test_get_watch_price_success(mocker):
+    from bot.functions import get_watch_price
+
+    mocker.patch(
+        "bot.functions.db_find_watch_by_name",
+        return_value={"name": "Casio G1714", "swisstimehouse_url": "https://www.swisstimehouse.com/casio-g1714"},
+    )
+    mocker.patch(
+        "bot.functions.fetch_swisstimehouse",
+        return_value={"name": "Casio G1714", "brand": "Casio", "reference": "G1714", "price": 33000.0},  # noqa: E501
+    )
+    result = get_watch_price("casio g1714")
+    assert "33000" in result
