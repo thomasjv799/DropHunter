@@ -17,8 +17,11 @@ def _is_swisstimehouse(url: str) -> bool:
     return host == _ALLOWED_HOST or host.endswith("." + _ALLOWED_HOST)
 
 
-def _extract_product_jsonld(html: str) -> dict | None:
-    """Return the first schema.org Product JSON-LD object with a price, or None."""
+def _extract_product_offer(html: str) -> tuple[dict, dict] | tuple[None, None]:
+    """Return (product, offers) for the first schema.org Product with a usable price.
+
+    Returns (None, None) if no such Product JSON-LD block is found.
+    """
     soup = BeautifulSoup(html, "html.parser")
     for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
         raw = script.string or script.get_text() or ""
@@ -30,15 +33,18 @@ def _extract_product_jsonld(html: str) -> dict | None:
         for obj in candidates:
             if not isinstance(obj, dict):
                 continue
-            if obj.get("@type") != "Product":
+            obj_type = obj.get("@type")
+            types = obj_type if isinstance(obj_type, list) else [obj_type]
+            if "Product" not in types:
                 continue
             offers = obj.get("offers") or {}
             if isinstance(offers, list):
                 offers = offers[0] if offers else {}
-            if offers.get("price") is None:
+            price = offers.get("price")
+            if price is None or price == "":
                 continue
-            return obj
-    return None
+            return obj, offers
+    return None, None
 
 
 def fetch_swisstimehouse(url: str) -> dict | None:
@@ -59,14 +65,16 @@ def fetch_swisstimehouse(url: str) -> dict | None:
         logger.warning("Failed to fetch swisstimehouse URL %s: %s", url, exc)
         return None
 
-    product = _extract_product_jsonld(html)
+    product, offers = _extract_product_offer(html)
     if product is None:
         logger.warning("No Product JSON-LD with a price found at %s", url)
         return None
 
-    offers = product.get("offers") or {}
-    if isinstance(offers, list):
-        offers = offers[0] if offers else {}
+    try:
+        price = float(offers["price"])
+    except (ValueError, TypeError):
+        logger.warning("Invalid price value at %s: %r", url, offers.get("price"))
+        return None
 
     brand = product.get("brand") or {}
     brand_name = brand.get("name") if isinstance(brand, dict) else brand
@@ -75,13 +83,10 @@ def fetch_swisstimehouse(url: str) -> dict | None:
         "name": product.get("name"),
         "brand": brand_name,
         "reference": product.get("sku") or product.get("mpn"),
-        "price": float(offers["price"]),
+        "price": price,
     }
     logger.info(
         "Fetched %s: %s (ref=%s) ₹%.2f",
-        url,
-        result["name"],
-        result["reference"],
-        result["price"],
+        url, result["name"], result["reference"], result["price"],
     )
     return result

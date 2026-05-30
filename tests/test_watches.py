@@ -57,3 +57,46 @@ def test_fetch_swisstimehouse_returns_none_on_request_error():
     with patch("utils.watches.cloudscraper.create_scraper", return_value=scraper):
         result = fetch_swisstimehouse("https://www.swisstimehouse.com/casio-g1714")
     assert result is None
+
+
+def test_fetch_swisstimehouse_handles_string_brand_and_skips_empty_price():
+    from utils.watches import fetch_swisstimehouse
+
+    # First Product has an empty-string price (must be skipped); second is valid
+    # with a bare-string brand and a list-form @type.
+    html = '''
+    <html><head>
+    <script type="application/ld+json">
+    {"@type": "Product", "name": "Bad", "sku": "X", "offers": {"price": ""}}
+    </script>
+    <script type="application/ld+json">
+    {"@type": ["Product", "Thing"], "name": "Casio Good", "sku": "G999",
+     "brand": "Casio", "offers": {"price": "12345", "priceCurrency": "INR"}}
+    </script>
+    </head><body></body></html>
+    '''
+    mock_scraper = _mock_scraper_returning(html)
+    with patch("utils.watches.cloudscraper.create_scraper", return_value=mock_scraper):
+        result = fetch_swisstimehouse("https://www.swisstimehouse.com/casio-good")
+
+    assert result is not None
+    assert result["name"] == "Casio Good"
+    assert result["brand"] == "Casio"
+    assert result["reference"] == "G999"
+    assert result["price"] == 12345.0
+
+
+def test_fetch_swisstimehouse_returns_none_on_unparseable_price():
+    from utils.watches import fetch_swisstimehouse
+
+    html = '''
+    <html><head>
+    <script type="application/ld+json">
+    {"@type": "Product", "name": "Weird", "sku": "Z", "offers": {"price": "not-a-number"}}
+    </script>
+    </head><body></body></html>
+    '''
+    mock_scraper = _mock_scraper_returning(html)
+    with patch("utils.watches.cloudscraper.create_scraper", return_value=mock_scraper):
+        result = fetch_swisstimehouse("https://www.swisstimehouse.com/weird")
+    assert result is None
