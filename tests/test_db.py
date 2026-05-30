@@ -324,3 +324,19 @@ def test_get_last_watch_notified_price(mocker):
     mocker.patch.object(client, "_get_client", return_value=mock_supa)
 
     assert client.get_last_watch_notified_price("w1") == 28000.0
+
+
+def test_log_watch_notification(mocker):
+    from db import client
+
+    fake_table = mocker.MagicMock()
+    fake_table.insert.return_value.execute.return_value.data = [
+        {"id": "n1", "watch_id": "w1", "price": 29000.0, "seller": "Swiss Time House"}
+    ]
+    mock_supa = mocker.MagicMock(table=lambda *_: fake_table)
+    mocker.patch.object(client, "_get_client", return_value=mock_supa)
+
+    result = client.log_watch_notification("w1", 29000.0, "Swiss Time House")
+    assert result["id"] == "n1"
+    args, _ = fake_table.insert.call_args
+    assert args[0]["seller"] == "Swiss Time House"
