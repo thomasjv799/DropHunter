@@ -1,6 +1,6 @@
 # DropHunter
 
-A personal Discord bot that tracks game prices and alerts you when deals hit. Built as an AI agent — you talk to it in plain English and it handles the rest.
+A personal Discord bot that tracks game and watch prices and alerts you when deals hit. Built as an AI agent — you talk to it in plain English and it handles the rest.
 <img width="2442" height="1423" alt="image" src="https://github.com/user-attachments/assets/023ac522-b964-4e54-9fda-0fc24faded6f" />
 
 ---
@@ -8,6 +8,7 @@ A personal Discord bot that tracks game prices and alerts you when deals hit. Bu
 ## What it does
 
 - **Track games** — tell the bot to watch a game and it monitors prices across all storefronts via [IsThereAnyDeal](https://isthereanydeal.com/)
+- **Track watches** — paste a [Swiss Time House](https://www.swisstimehouse.com) product URL and set a target price; the bot fetches the listing (past Cloudflare via `cloudscraper`, parsing the page's `schema.org` Product JSON-LD) and alerts you when the price drops to/below your target
 - **Custom price targets** — set a threshold (e.g. "alert me when Elden Ring drops below ₹500") instead of waiting for the all-time low
 - **Daily price sweeps** — a background cron job checks every tracked game and fires a Discord webhook alert with AI commentary when a deal is found
 - **Conversational memory** — the bot remembers your conversation across sessions using Supabase-backed chat history and rolling summarization
@@ -31,7 +32,7 @@ Discord message
   └── save_memory       persist turn, rolling summarization via Gemini
       │
       ▼
- cron/price_check.py    background daemon — sweeps all tracked games daily
+ cron/price_check.py    background daemon — sweeps all tracked games and watches daily
       │
       ▼
  utils/discord.py       webhook alert with Groq AI commentary
@@ -39,7 +40,7 @@ Discord message
 
 **AI layer:** `GroqProvider` (primary) + `GeminiProvider` (fallback). Both implement the `AIProvider` ABC. The `_FallbackProvider` wrapper auto-switches on failure.
 
-**Database:** Supabase (PostgreSQL) with four tables — `games`, `price_history`, `notifications_log`, `chat_messages`, `chat_summary`.
+**Database:** Supabase (PostgreSQL) — game tables (`games`, `price_history`, `notifications_log`), watch tables (`watches`, `watch_price_history`, `watch_notifications_log`), and chat memory (`chat_messages`, `chat_summary`).
 
 **Observability:** Full end-to-end tracing via [Langfuse](https://langfuse.com/) — every conversation produces a trace with child spans per graph node, LLM generations with token counts, and per-tool spans.
 
@@ -57,6 +58,11 @@ Discord message
 | "what's the historical low for Celeste?" | all-time low from ITAD |
 | "show recent deals" | last notified deals |
 | "set target for Elden Ring to ₹800" | updates price threshold |
+| "track this watch https://www.swisstimehouse.com/casio-g1714 under ₹30000" | adds a watch with a target price |
+| "what watches am I tracking?" | lists tracked watches with targets |
+| "what's the price of my Casio G1714?" | live price from Swiss Time House |
+| "set watch target for Casio G1714 to ₹28000" | updates the watch threshold |
+| "stop tracking the Casio G1714" | removes the watch |
 
 ---
 
@@ -67,7 +73,8 @@ Discord message
 | Bot | discord.py |
 | AI | Groq (Llama-3.3-70b-versatile), Google Gemini (gemini-3-flash-preview) |
 | Agent framework | LangGraph |
-| Prices | IsThereAnyDeal API v3 (IN region, INR) |
+| Game prices | IsThereAnyDeal API v3 (IN region, INR) |
+| Watch prices | Swiss Time House product pages (`cloudscraper` + BeautifulSoup, `schema.org` JSON-LD) |
 | Database | Supabase (PostgreSQL) |
 | Observability | Langfuse v3 |
 | Hosting | Render (Web Service) |
@@ -83,7 +90,7 @@ ai/           AIProvider ABC, GroqProvider, GeminiProvider, LangGraph graph
 bot/          Discord client, tool function definitions
 cron/         Background price sweep daemon
 db/           Supabase client, schema.sql
-utils/        ITAD API helpers, Discord webhook sender
+utils/        ITAD API helpers, Swiss Time House watch fetcher, Discord webhook sender
 tests/        Pytest unit tests
 main.py       Entrypoint — starts bot + health check HTTP server
 Dockerfile    Python 3.11-slim image
