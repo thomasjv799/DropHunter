@@ -115,3 +115,98 @@ def test_dispatch_returns_error_for_unknown_tool():
 
     result = dispatch("nonexistent_tool", {})
     assert "unknown tool" in result.lower()
+
+
+_CASIO_WATCH = {"name": "Casio G1714", "brand": "Casio", "reference": "G1714", "price": 34997.0}
+
+
+def test_add_watch_asks_for_target_when_missing(mocker):
+    from bot.functions import add_watch
+
+    mocker.patch("bot.functions.fetch_swisstimehouse", return_value=_CASIO_WATCH)
+    mock_db = mocker.patch("bot.functions.db_add_watch")
+    result = add_watch("https://www.swisstimehouse.com/casio-g1714")
+    assert "34997" in result
+    assert "target" in result.lower()
+    mock_db.assert_not_called()
+
+
+def test_add_watch_stores_with_target(mocker):
+    from bot.functions import add_watch
+
+    mocker.patch("bot.functions.fetch_swisstimehouse", return_value=_CASIO_WATCH)
+    mock_db = mocker.patch(
+        "bot.functions.db_add_watch", return_value={"id": "w1", "name": "Casio G1714"}
+    )
+    result = add_watch("https://www.swisstimehouse.com/casio-g1714", target_price=30000.0)
+    assert "Casio G1714" in result
+    assert "30000" in result
+    mock_db.assert_called_once_with(
+        name="Casio G1714",
+        brand="Casio",
+        reference_no="G1714",
+        target_price=30000.0,
+        swisstimehouse_url="https://www.swisstimehouse.com/casio-g1714",
+    )
+
+
+def test_add_watch_fetch_failure(mocker):
+    from bot.functions import add_watch
+
+    mocker.patch("bot.functions.fetch_swisstimehouse", return_value=None)
+    result = add_watch("https://www.swisstimehouse.com/bad", target_price=30000.0)
+    assert (
+        "couldn't" in result.lower()
+        or "could not" in result.lower()
+        or "unable" in result.lower()
+    )
+
+
+def test_list_watches_with_rows(mocker):
+    from bot.functions import list_watches
+
+    mocker.patch(
+        "bot.functions.db_get_watches",
+        return_value=[{"name": "Casio G1714", "target_price": 30000.0}],
+    )
+    result = list_watches()
+    assert "Casio G1714" in result
+    assert "30000" in result
+
+
+def test_list_watches_empty(mocker):
+    from bot.functions import list_watches
+
+    mocker.patch("bot.functions.db_get_watches", return_value=[])
+    result = list_watches()
+    assert "empty" in result.lower() or "no watches" in result.lower()
+
+
+def test_set_watch_target_success(mocker):
+    from bot.functions import set_watch_target
+
+    mocker.patch("bot.functions.db_set_watch_target", return_value=True)
+    result = set_watch_target("Casio G1714", 25000.0)
+    assert "25000" in result
+
+
+def test_remove_watch_success(mocker):
+    from bot.functions import remove_watch
+
+    mocker.patch("bot.functions.db_remove_watch", return_value=True)
+    result = remove_watch("Casio G1714")
+    assert "no longer" in result.lower() or "removed" in result.lower()
+
+
+def test_dispatch_routes_to_add_watch(mocker):
+    from bot.functions import dispatch
+
+    mocker.patch("bot.functions.fetch_swisstimehouse", return_value=_CASIO_WATCH)
+    mocker.patch(
+        "bot.functions.db_add_watch", return_value={"id": "w1", "name": "Casio G1714"}
+    )
+    result = dispatch(
+        "add_watch",
+        {"url": "https://www.swisstimehouse.com/casio-g1714", "target_price": 30000.0},
+    )
+    assert "Casio G1714" in result
