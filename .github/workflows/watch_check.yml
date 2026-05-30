@@ -1,0 +1,30 @@
+name: Watch Price Check
+
+on:
+  schedule:
+    - cron: "30 */12 * * *"   # every 12h, offset 30 min from the game sweep
+  workflow_dispatch:
+
+jobs:
+  check-watches:
+    runs-on: self-hosted      # runs on the Mac mini (residential IP, passes Cloudflare)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up venv and install dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Run watch sweep
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AI_PROVIDER: ${{ secrets.AI_PROVIDER }}
+        run: .venv/bin/python -m cron.price_check --watches
