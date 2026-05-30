@@ -1,4 +1,5 @@
 import logging
+import sys
 
 from ai import get_provider
 from db.client import (
@@ -154,13 +155,15 @@ def process_watch(watch: dict) -> None:
     logger.info("[%s] Watch alert sent!", name)
 
 
-def run() -> None:
+def _configure_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
+
+def sweep_games() -> None:
     games = get_games()
     logger.info("Checking prices for %d game(s)...", len(games))
     for game in games:
@@ -169,6 +172,8 @@ def run() -> None:
         except Exception as exc:
             logger.error("[%s] ERROR: %s", game["title"], exc, exc_info=True)
 
+
+def sweep_watches() -> None:
     watches = get_watches()
     logger.info("Checking prices for %d watch(es)...", len(watches))
     for watch in watches:
@@ -176,8 +181,25 @@ def run() -> None:
             process_watch(watch)
         except Exception as exc:
             logger.error("[%s] ERROR: %s", watch["name"], exc, exc_info=True)
+
+
+def run(games: bool = True, watches: bool = True) -> None:
+    _configure_logging()
+    if games:
+        sweep_games()
+    if watches:
+        sweep_watches()
     logger.info("Price check run complete.")
 
 
+def _parse_scope(argv: list) -> tuple:
+    """Return (run_games, run_watches). No --games/--watches flag means run both."""
+    flags = set(argv)
+    if "--games" in flags or "--watches" in flags:
+        return ("--games" in flags, "--watches" in flags)
+    return (True, True)
+
+
 if __name__ == "__main__":
-    run()
+    run_games, run_watches = _parse_scope(sys.argv[1:])
+    run(games=run_games, watches=run_watches)

@@ -236,3 +236,41 @@ def test_process_watch_handles_missing_url(sample_watch, mocker):
         watch_id="watch-uuid-1", swisstimehouse_price=None, myntra_price=None
     )
     mock_alert.assert_not_called()
+
+
+def test_parse_scope_no_flags_runs_both():
+    from cron.price_check import _parse_scope
+    assert _parse_scope([]) == (True, True)
+
+
+def test_parse_scope_games_only():
+    from cron.price_check import _parse_scope
+    assert _parse_scope(["--games"]) == (True, False)
+
+
+def test_parse_scope_watches_only():
+    from cron.price_check import _parse_scope
+    assert _parse_scope(["--watches"]) == (False, True)
+
+
+def test_parse_scope_both_flags():
+    from cron.price_check import _parse_scope
+    assert _parse_scope(["--games", "--watches"]) == (True, True)
+
+
+def test_run_games_only_skips_watches(mocker):
+    from cron.price_check import run
+    mock_games = mocker.patch("cron.price_check.get_games", return_value=[])
+    mock_watches = mocker.patch("cron.price_check.get_watches", return_value=[])
+    run(games=True, watches=False)
+    mock_games.assert_called_once()
+    mock_watches.assert_not_called()
+
+
+def test_run_watches_only_skips_games(mocker):
+    from cron.price_check import run
+    mock_games = mocker.patch("cron.price_check.get_games", return_value=[])
+    mock_watches = mocker.patch("cron.price_check.get_watches", return_value=[])
+    run(games=False, watches=True)
+    mock_watches.assert_called_once()
+    mock_games.assert_not_called()
