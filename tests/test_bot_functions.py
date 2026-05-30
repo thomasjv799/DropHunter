@@ -229,7 +229,10 @@ def test_get_watch_price_success(mocker):
     )
     mocker.patch(
         "bot.functions.fetch_swisstimehouse",
-        return_value={"name": "Casio G1714", "brand": "Casio", "reference": "G1714", "price": 33000.0},  # noqa: E501
+        return_value={
+            "name": "Casio G1714", "brand": "Casio",
+            "reference": "G1714", "price": 33000.0,
+        },
     )
     result = get_watch_price("casio g1714")
     assert "33000" in result
