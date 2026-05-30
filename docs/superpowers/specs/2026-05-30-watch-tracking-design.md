@@ -114,7 +114,7 @@ create index if not exists idx_watch_notifications_log_watch_id on watch_notific
   - If `target_price` is omitted, the bot replies with the current price and **asks the user for a target** (it does not store yet).
   - **Upserts** the watch (on `swisstimehouse_url`), so re-adding later with a different/added source fills it in without duplicating.
   - On success, replies with the current price and the configured target.
-- `list_watches()` — lists tracked watches with their target prices and latest known price.
+- `list_watches()` — lists tracked watches with their target prices (no live price fetch on a list call).
 - `get_watch_price(name)` — fuzzy-matches a tracked watch by name (reuse the `_normalize`/`_find` pattern from `db/client.py`) and returns its current price(s).
 - `set_watch_target(name, target_price)` — updates the target.
 - `remove_watch(name)` — removes a watch.
