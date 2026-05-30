@@ -4,11 +4,16 @@ from ai import get_provider
 from db.client import (
     get_games,
     get_last_notified_price,
+    get_last_watch_notified_price,
+    get_watches,
     insert_price_history,
+    insert_watch_price_history,
     log_notification,
+    log_watch_notification,
 )
-from utils.discord import send_deal_alert
+from utils.discord import send_deal_alert, send_watch_alert
 from utils.itad import get_best_price, get_historical_low
+from utils.watches import fetch_swisstimehouse
 
 logger = logging.getLogger("drophunter.cron")
 
@@ -91,6 +96,64 @@ def process_game(game: dict) -> None:
     logger.info("[%s] Deal alert sent!", title)
 
 
+_SWISS_SELLER = "Swiss Time House"
+
+
+def process_watch(watch: dict) -> None:
+    name = watch["name"]
+    logger.info("[%s] Fetching watch price...", name)
+
+    swiss_price = None
+    url = watch.get("swisstimehouse_url")
+    if not url:
+        logger.warning("[%s] No swisstimehouse_url configured, skipping fetch.", name)
+    else:
+        fetched = fetch_swisstimehouse(url)
+        if fetched is not None:
+            swiss_price = fetched["price"]
+
+    insert_watch_price_history(
+        watch_id=watch["id"], swisstimehouse_price=swiss_price, myntra_price=None
+    )
+
+    # Lowest available price across sources (only swisstimehouse in v1).
+    candidates = [(swiss_price, _SWISS_SELLER)]
+    available = [(p, s) for p, s in candidates if p is not None]
+    if not available:
+        logger.info("[%s] No price available this sweep, skipping.", name)
+        return
+
+    price, seller = min(available, key=lambda ps: ps[0])
+    target = float(watch["target_price"])
+    if price > target:
+        logger.info("[%s] ₹%.2f above target ₹%.2f, skipping.", name, price, target)
+        return
+
+    last_notified = get_last_watch_notified_price(watch["id"])
+    if last_notified is not None and price >= last_notified:
+        logger.info(
+            "[%s] ₹%.2f not lower than last notified ₹%.2f, skipping.",
+            name, price, last_notified,
+        )
+        return
+
+    logger.info("[%s] Deal! ₹%.2f on %s. Generating commentary...", name, price, seller)
+    provider = get_provider()
+    commentary = provider.generate_text(
+        f"Write a one-sentence buy recommendation for the watch '{name}'. "
+        f"Current price: ₹{price} on {seller}, below the user's target of ₹{target}."
+    )
+    send_watch_alert(
+        watch_name=name,
+        price=price,
+        seller=seller,
+        target_price=target,
+        ai_commentary=commentary,
+    )
+    log_watch_notification(watch["id"], price, seller)
+    logger.info("[%s] Watch alert sent!", name)
+
+
 def run() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -105,6 +168,14 @@ def run() -> None:
             process_game(game)
         except Exception as exc:
             logger.error("[%s] ERROR: %s", game["title"], exc, exc_info=True)
+
+    watches = get_watches()
+    logger.info("Checking prices for %d watch(es)...", len(watches))
+    for watch in watches:
+        try:
+            process_watch(watch)
+        except Exception as exc:
+            logger.error("[%s] ERROR: %s", watch["name"], exc, exc_info=True)
     logger.info("Price check run complete.")
 
 

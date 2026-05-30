@@ -1,15 +1,21 @@
 import logging
 
 from db.client import (
+    _find_watch_by_name as db_find_watch_by_name,
     add_game as db_add_game,
+    add_watch as db_add_watch,
     clear_memory as db_clear_memory,
     force_summarize as db_force_summarize,
     get_games as db_get_games,
     get_recent_deals as db_get_recent_deals,
+    get_watches as db_get_watches,
     remove_game as db_remove_game,
+    remove_watch as db_remove_watch,
     set_target_price as db_set_target_price,
+    set_watch_target as db_set_watch_target,
 )
 from utils.itad import get_all_prices, get_historical_low, search_game
+from utils.watches import fetch_swisstimehouse
 
 logger = logging.getLogger("drophunter.functions")
 
@@ -104,6 +110,73 @@ def get_recent_deals() -> str:
         for d in deals
     )
     return f"**Recent deals I found:**\n{lines}"
+
+
+def add_watch(url: str, target_price: float = None) -> str:
+    logger.info("add_watch called: url=%s, target_price=%s", url, target_price)
+    watch = fetch_swisstimehouse(url)
+    if watch is None:
+        return (
+            "Sorry, I couldn't read a price from that link. "
+            "Make sure it's a swisstimehouse.com product page."
+        )
+    if target_price is None:
+        return (
+            f"**{watch['name']}** is currently ₹{watch['price']:.2f} on Swiss Time House. "
+            f"What target price (in ₹) should I alert you below?"
+        )
+    db_add_watch(
+        name=watch["name"],
+        brand=watch["brand"],
+        reference_no=watch["reference"],
+        target_price=target_price,
+        swisstimehouse_url=url,
+    )
+    return (
+        f"Tracking **{watch['name']}** (currently ₹{watch['price']:.2f}). "
+        f"I'll alert you when it drops below ₹{target_price:.2f}."
+    )
+
+
+def list_watches() -> str:
+    logger.info("list_watches called")
+    watches = db_get_watches()
+    if not watches:
+        return "Your watch list is empty. Add one with a swisstimehouse.com product link."
+    lines = ["**Watches you're tracking:**"]
+    for w in watches:
+        line = f"• {w['name']}"
+        if w.get("target_price") is not None:
+            line += f" (target: ₹{float(w['target_price']):.2f})"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def get_watch_price(name: str) -> str:
+    logger.info("get_watch_price called: name=%s", name)
+    match = db_find_watch_by_name(name)
+    if not match or not match.get("swisstimehouse_url"):
+        return f"**{name}** isn't on your watch list."
+    fetched = fetch_swisstimehouse(match["swisstimehouse_url"])
+    if fetched is None:
+        return f"I couldn't fetch the current price for **{match['name']}** right now."
+    return f"**{match['name']}** is currently ₹{fetched['price']:.2f} on Swiss Time House."
+
+
+def set_watch_target(name: str, target_price: float) -> str:
+    logger.info("set_watch_target called: name=%s, target_price=%s", name, target_price)
+    updated = db_set_watch_target(name, target_price)
+    if not updated:
+        return f"**{name}** wasn't found in your watch list."
+    return f"Target price for **{name}** set to ₹{target_price:.2f}."
+
+
+def remove_watch(name: str) -> str:
+    logger.info("remove_watch called: name=%s", name)
+    removed = db_remove_watch(name)
+    if removed:
+        return f"No longer tracking **{name}**."
+    return f"**{name}** wasn't in your watch list."
 
 
 # Tool definitions in OpenAI function-calling format
@@ -234,6 +307,82 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_watch",
+            "description": (
+                "Track a watch's price from a swisstimehouse.com product URL. "
+                "Provide a target price in INR; the user is alerted when the price drops below it. "
+                "If no target price is given, this returns the current price and asks for one."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "A swisstimehouse.com product page URL.",
+                    },
+                    "target_price": {
+                        "type": "number",
+                        "description": "Target alert price in INR.",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_watches",
+            "description": "List all watches currently being tracked.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_watch_price",
+            "description": "Get the current price of a tracked watch from swisstimehouse.com.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "The name of the tracked watch."}
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_watch_target",
+            "description": "Set or update the target price (INR) for a tracked watch.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "The name of the tracked watch."},
+                    "target_price": {"type": "number", "description": "New target price in INR."},
+                },
+                "required": ["name", "target_price"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remove_watch",
+            "description": "Remove a watch from the watch list.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "The name of the watch to remove."}
+                },
+                "required": ["name"],
+            },
+        },
+    },
 ]
 
 
@@ -254,6 +403,11 @@ _FUNCTION_MAP = {
     "set_target_price": set_target_price,
     "get_historical_low_price": get_historical_low_price,
     "clear_memory": clear_memory,
+    "add_watch": add_watch,
+    "list_watches": list_watches,
+    "get_watch_price": get_watch_price,
+    "set_watch_target": set_watch_target,
+    "remove_watch": remove_watch,
 }
 
 
