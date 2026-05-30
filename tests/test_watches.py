@@ -100,3 +100,27 @@ def test_fetch_swisstimehouse_returns_none_on_unparseable_price():
     with patch("utils.watches.cloudscraper.create_scraper", return_value=mock_scraper):
         result = fetch_swisstimehouse("https://www.swisstimehouse.com/weird")
     assert result is None
+
+
+def test_fetch_swisstimehouse_skips_product_without_name():
+    from utils.watches import fetch_swisstimehouse
+
+    # First Product has a price but no name (must be skipped); second is valid.
+    html = '''
+    <html><head>
+    <script type="application/ld+json">
+    {"@type": "Product", "sku": "X", "offers": {"price": "100"}}
+    </script>
+    <script type="application/ld+json">
+    {"@type": "Product", "name": "Casio Named", "sku": "G42",
+     "brand": "Casio", "offers": {"price": "5000"}}
+    </script>
+    </head><body></body></html>
+    '''
+    scraper = _mock_scraper_returning(html)
+    with patch("utils.watches.cloudscraper.create_scraper", return_value=scraper):
+        result = fetch_swisstimehouse("https://www.swisstimehouse.com/x")
+
+    assert result is not None
+    assert result["name"] == "Casio Named"
+    assert result["price"] == 5000.0
