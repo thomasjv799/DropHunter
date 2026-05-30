@@ -105,7 +105,9 @@ def process_watch(watch: dict) -> None:
 
     swiss_price = None
     url = watch.get("swisstimehouse_url")
-    if url:
+    if not url:
+        logger.warning("[%s] No swisstimehouse_url configured, skipping fetch.", name)
+    else:
         fetched = fetch_swisstimehouse(url)
         if fetched is not None:
             swiss_price = fetched["price"]
