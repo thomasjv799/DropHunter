@@ -37,6 +37,8 @@ def _extract_product_offer(html: str) -> tuple[dict, dict] | tuple[None, None]:
             types = obj_type if isinstance(obj_type, list) else [obj_type]
             if "Product" not in types:
                 continue
+            if not obj.get("name"):
+                continue
             offers = obj.get("offers") or {}
             if isinstance(offers, list):
                 offers = offers[0] if offers else {}
