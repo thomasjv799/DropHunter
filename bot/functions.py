@@ -1,6 +1,7 @@
 import logging
 
 from db.client import (
+    _find_watch_by_name as db_find_watch_by_name,
     add_game as db_add_game,
     add_watch as db_add_watch,
     clear_memory as db_clear_memory,
@@ -153,13 +154,7 @@ def list_watches() -> str:
 
 def get_watch_price(name: str) -> str:
     logger.info("get_watch_price called: name=%s", name)
-    watches = db_get_watches()
-    from db.client import _normalize
-    norm = _normalize(name)
-    match = next(
-        (w for w in watches if norm in _normalize(w["name"]) or _normalize(w["name"]) in norm),
-        None,
-    )
+    match = db_find_watch_by_name(name)
     if not match or not match.get("swisstimehouse_url"):
         return f"**{name}** isn't on your watch list."
     fetched = fetch_swisstimehouse(match["swisstimehouse_url"])
