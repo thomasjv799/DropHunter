@@ -219,3 +219,20 @@ def test_run_checks_watches_too(mocker):
 
     run()
     mock_process_watch.assert_called_once_with({"id": "w1", "name": "Casio G1714"})
+
+
+def test_process_watch_handles_missing_url(sample_watch, mocker):
+    from cron.price_check import process_watch
+
+    sample_watch = {**sample_watch, "swisstimehouse_url": None}
+    mock_fetch = mocker.patch("cron.price_check.fetch_swisstimehouse")
+    mock_hist = mocker.patch("cron.price_check.insert_watch_price_history")
+    mock_alert = mocker.patch("cron.price_check.send_watch_alert")
+
+    process_watch(sample_watch)
+
+    mock_fetch.assert_not_called()
+    mock_hist.assert_called_once_with(
+        watch_id="watch-uuid-1", swisstimehouse_price=None, myntra_price=None
+    )
+    mock_alert.assert_not_called()
