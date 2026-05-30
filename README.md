@@ -10,7 +10,7 @@ A personal Discord bot that tracks game and watch prices and alerts you when dea
 - **Track games** — tell the bot to watch a game and it monitors prices across all storefronts via [IsThereAnyDeal](https://isthereanydeal.com/)
 - **Track watches** — paste a [Swiss Time House](https://www.swisstimehouse.com) product URL and set a target price; the bot fetches the listing (past Cloudflare via `cloudscraper`, parsing the page's `schema.org` Product JSON-LD) and alerts you when the price drops to/below your target
 - **Custom price targets** — set a threshold (e.g. "alert me when Elden Ring drops below ₹500") instead of waiting for the all-time low
-- **Daily price sweeps** — a background cron job checks every tracked game and fires a Discord webhook alert with AI commentary when a deal is found
+- **Scheduled price sweeps** — every 12 hours, scheduled jobs check each tracked game and watch and fire a Discord webhook alert with AI commentary when a deal is found
 - **Conversational memory** — the bot remembers your conversation across sessions using Supabase-backed chat history and rolling summarization
 - **Multi-step reasoning** — powered by LangGraph, the bot can call multiple tools in sequence to answer complex questions
 
@@ -32,7 +32,7 @@ Discord message
   └── save_memory       persist turn, rolling summarization via Gemini
       │
       ▼
- cron/price_check.py    background daemon — sweeps all tracked games and watches daily
+ cron/price_check.py    scheduled sweep — games on GitHub-hosted Actions, watches on a self-hosted runner
       │
       ▼
  utils/discord.py       webhook alert with Groq AI commentary
@@ -77,7 +77,8 @@ Discord message
 | Watch prices | Swiss Time House product pages (`cloudscraper` + BeautifulSoup, `schema.org` JSON-LD) |
 | Database | Supabase (PostgreSQL) |
 | Observability | Langfuse v3 |
-| Hosting | Render (Web Service) |
+| Hosting | Self-hosted Mac mini (Ubuntu, Docker) on home LAN |
+| Scheduling | GitHub Actions — game sweep (hosted runner) + watch sweep (self-hosted runner on the Mac mini) |
 | Retry logic | tenacity (exponential backoff) |
 | Tests | pytest + pytest-mock |
 
@@ -88,7 +89,7 @@ Discord message
 ```
 ai/           AIProvider ABC, GroqProvider, GeminiProvider, LangGraph graph
 bot/          Discord client, tool function definitions
-cron/         Background price sweep daemon
+cron/         Price sweep (run via GitHub Actions; --games / --watches)
 db/           Supabase client, schema.sql
 utils/        ITAD API helpers, Swiss Time House watch fetcher, Discord webhook sender
 tests/        Pytest unit tests
@@ -139,6 +140,16 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 
 ## Deployment
 
-Runs on Render as a Web Service (free tier). The bot starts an HTTP server on port 8080 alongside Discord so Render's health checks pass.
+The bot runs on a **self-hosted Mac mini (Ubuntu)** as a Docker container, started from the included `Dockerfile`. It runs an HTTP health server on port 8080 alongside the Discord client.
 
-The price sweep cron can be triggered via GitHub Actions on a schedule, or run locally with `python -m cron.price_check`.
+```bash
+docker build -t drophunter .
+docker run -d --name drophunter --restart unless-stopped --env-file .env -p 8080:8080 drophunter
+```
+
+Price sweeps run on a 12-hour schedule via **two GitHub Actions workflows**, split because Swiss Time House sits behind Cloudflare, which blocks GitHub's datacenter IP ranges:
+
+- **Game Price Check** (`.github/workflows/price_check.yml`) — GitHub-hosted runner, runs `python -m cron.price_check --games` (ITAD works fine from datacenter IPs).
+- **Watch Price Check** (`.github/workflows/watch_check.yml`) — **self-hosted runner on the Mac mini** (residential IP, so `cloudscraper` passes Cloudflare), runs `python -m cron.price_check --watches`.
+
+Run a sweep manually with `python -m cron.price_check` (both), or pass `--games` / `--watches` for a single type.
