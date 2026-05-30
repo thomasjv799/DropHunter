@@ -43,3 +43,33 @@ create table if not exists chat_summary (
 );
 
 create index if not exists idx_chat_messages_user_id on chat_messages(user_id);
+
+create table if not exists watches (
+    id uuid primary key default gen_random_uuid(),
+    name text not null,
+    brand text null,
+    reference_no text null,
+    target_price numeric not null,
+    swisstimehouse_url text null unique,
+    myntra_url text null,
+    added_at timestamptz not null default now()
+);
+
+create table if not exists watch_price_history (
+    id uuid primary key default gen_random_uuid(),
+    watch_id uuid not null references watches(id) on delete cascade,
+    swisstimehouse_price numeric null,
+    myntra_price numeric null,
+    fetched_at timestamptz not null default now()
+);
+
+create table if not exists watch_notifications_log (
+    id uuid primary key default gen_random_uuid(),
+    watch_id uuid not null references watches(id) on delete cascade,
+    price numeric not null,
+    seller text not null,
+    notified_at timestamptz not null default now()
+);
+
+create index if not exists idx_watch_price_history_watch_id on watch_price_history(watch_id);
+create index if not exists idx_watch_notifications_log_watch_id on watch_notifications_log(watch_id);
