@@ -386,6 +386,7 @@ def add_watch(
     )
     if not result.data:
         raise RuntimeError(f"Insert into 'watches' returned no data: {result}")
+    logger.info("Watch added/updated: %s", name)
     return result.data[0]
 
 
@@ -403,6 +404,7 @@ def _find_watch_by_name(name: str) -> Optional[dict]:
 
 
 def set_watch_target(name: str, target_price: float) -> bool:
+    logger.info("Setting watch target for %s: %s", name, target_price)
     watch = _find_watch_by_name(name)
     if not watch:
         logger.warning("No watch matched '%s' for target update", name)
@@ -423,6 +425,7 @@ def remove_watch(name: str) -> bool:
         logger.warning("No watch matched '%s' for removal", name)
         return False
     result = _get_client().table("watches").delete().eq("id", watch["id"]).execute()
+    logger.info("Watch removed: %s", watch["name"])
     return len(result.data) > 0
 
 
@@ -449,6 +452,7 @@ def insert_watch_price_history(
 
 
 def get_last_watch_notified_price(watch_id: str) -> Optional[float]:
+    """Return the price from the most recent notification for this watch, or None."""
     result = (
         _get_client()
         .table("watch_notifications_log")
