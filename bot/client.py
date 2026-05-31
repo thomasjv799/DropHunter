@@ -112,40 +112,41 @@ async def resetmemory(interaction: discord.Interaction):
 @tree.command(name="allow", description="(Owner) Permit a user to use the bot")
 @app_commands.describe(user="The user to permit")
 async def allow(interaction: discord.Interaction, user: discord.User):
+    await interaction.response.defer(ephemeral=True)
     if not _is_owner(str(interaction.user.id)):
-        await interaction.response.send_message("Owner only.", ephemeral=True)
+        await interaction.followup.send("Owner only.")
         return
     from db.client import add_allowed_user
     await asyncio.to_thread(add_allowed_user, str(user.id), str(interaction.user.id))
-    await interaction.response.send_message(f"✅ {user.mention} is now permitted.", ephemeral=True)
+    await interaction.followup.send(f"✅ {user.mention} is now permitted.")
 
 
 @tree.command(name="revoke", description="(Owner) Remove a user's access")
 @app_commands.describe(user="The user to revoke")
 async def revoke(interaction: discord.Interaction, user: discord.User):
+    await interaction.response.defer(ephemeral=True)
     if not _is_owner(str(interaction.user.id)):
-        await interaction.response.send_message("Owner only.", ephemeral=True)
+        await interaction.followup.send("Owner only.")
         return
     from db.client import remove_allowed_user
     removed = await asyncio.to_thread(remove_allowed_user, str(user.id))
     msg = f"🗑️ Revoked {user.mention}." if removed else f"{user.mention} wasn't permitted."
-    await interaction.response.send_message(msg, ephemeral=True)
+    await interaction.followup.send(msg)
 
 
 @tree.command(name="listusers", description="(Owner) List permitted users")
 async def listusers(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
     if not _is_owner(str(interaction.user.id)):
-        await interaction.response.send_message("Owner only.", ephemeral=True)
+        await interaction.followup.send("Owner only.")
         return
     from db.client import list_allowed_users
     rows = await asyncio.to_thread(list_allowed_users)
     if not rows:
-        await interaction.response.send_message(
-            "No permitted users yet (owner always allowed).", ephemeral=True
-        )
+        await interaction.followup.send("No permitted users yet (owner always allowed).")
         return
     lines = "\n".join(f"• <@{r['user_id']}>" for r in rows)
-    await interaction.response.send_message(f"**Permitted users:**\n{lines}", ephemeral=True)
+    await interaction.followup.send(f"**Permitted users:**\n{lines}")
 
 
 def run():
