@@ -1,41 +1,36 @@
 import logging
 
-from db.client import (
-    _find_watch_by_name as db_find_watch_by_name,
-    add_game as db_add_game,
-    add_watch as db_add_watch,
-    clear_memory as db_clear_memory,
-    force_summarize as db_force_summarize,
-    get_games as db_get_games,
-    get_recent_deals as db_get_recent_deals,
-    get_watches as db_get_watches,
-    remove_game as db_remove_game,
-    remove_watch as db_remove_watch,
-    set_target_price as db_set_target_price,
-    set_watch_target as db_set_watch_target,
-)
+from db.client import _find_watch_by_name as db_find_watch_by_name
+from db.client import add_game as db_add_game
+from db.client import add_watch as db_add_watch
+from db.client import force_summarize as db_force_summarize
+from db.client import get_games as db_get_games
+from db.client import get_recent_deals as db_get_recent_deals
+from db.client import get_watches as db_get_watches
+from db.client import remove_game as db_remove_game
+from db.client import remove_watch as db_remove_watch
+from db.client import set_target_price as db_set_target_price
+from db.client import set_watch_target as db_set_watch_target
 from utils.itad import get_all_prices, get_historical_low, search_game
 from utils.watches import fetch_swisstimehouse
 
 logger = logging.getLogger("drophunter.functions")
 
 
-def add_game(title: str, target_price: float = None) -> str:
-    logger.info("add_game called: title=%s, target_price=%s", title, target_price)
+def add_game(user_id: str, title: str, target_price: float = None) -> str:
     game = search_game(title)
     if game is None:
-        logger.warning("Game not found on ITAD: %s", title)
         return f"Sorry, '{title}' was not found on IsThereAnyDeal."
-    result = db_add_game(game["title"], game["id"], target_price=target_price)
-    logger.info("Game upserted in watchlist: %s (id=%s)", game["title"], game["id"])
+    db_add_game(user_id, game["title"], game["id"], target_price=target_price)
     if target_price is not None:
-        return f"Tracking **{game['title']}**. I'll alert you when it drops below ₹{target_price:.2f}."
+        return (
+            f"Tracking **{game['title']}**. I'll alert you when it drops below ₹{target_price:.2f}."
+        )
     return f"Tracking **{game['title']}**. I'll alert you when a deal drops."
 
 
-def set_target_price(title: str, target_price: float = None) -> str:
-    logger.info("set_target_price called: title=%s, target_price=%s", title, target_price)
-    updated = db_set_target_price(title, target_price)
+def set_target_price(user_id: str, title: str, target_price: float = None) -> str:
+    updated = db_set_target_price(user_id, title, target_price)
     if not updated:
         return f"**{title}** wasn't found in your watchlist."
     if target_price is None:
@@ -43,20 +38,14 @@ def set_target_price(title: str, target_price: float = None) -> str:
     return f"Target price for **{title}** set to ₹{target_price:.2f}."
 
 
-def remove_game(title: str) -> str:
-    logger.info("remove_game called: title=%s", title)
-    removed = db_remove_game(title)
-    if removed:
-        logger.info("Game removed: %s", title)
+def remove_game(user_id: str, title: str) -> str:
+    if db_remove_game(user_id, title):
         return f"No longer tracking **{title}**."
-    logger.warning("Game not in watchlist: %s", title)
     return f"**{title}** wasn't in your watchlist."
 
 
-def list_games() -> str:
-    logger.info("list_games called")
-    games = db_get_games()
-    logger.info("Found %d game(s) in watchlist", len(games))
+def list_games(user_id: str) -> str:
+    games = db_get_games(user_id)
     if not games:
         return "Your watchlist is empty. Try 'track <game name>' to add a game."
     lines = []
@@ -65,30 +54,25 @@ def list_games() -> str:
         if g.get("target_price") is not None:
             line += f" (target: ₹{g['target_price']:.2f})"
         lines.append(line)
-    return f"**Games you're tracking:**\n" + "\n".join(lines)
+    return "**Games you're tracking:**\n" + "\n".join(lines)
 
 
-def get_current_price(title: str) -> str:
-    logger.info("get_current_price called: title=%s", title)
+def get_current_price(user_id: str, title: str) -> str:
     game = search_game(title)
     if game is None:
-        logger.warning("Game not found on ITAD: %s", title)
         return f"Sorry, '{title}' was not found on IsThereAnyDeal."
     prices = get_all_prices(game["id"])
     if not prices:
-        logger.info("No deals found for %s", game["title"])
         return f"No current deals found for **{game['title']}**."
-    
     lines = [f"**{game['title']}** prices:"]
     for p in prices[:10]:
-        lines.append(f"• {p['store']}: ₹{p['price']:.2f} ({p['cut']}% off, was ₹{p['regular_price']:.2f})")
-    
-    logger.info("Fetched %d prices for %s", len(prices), game["title"])
+        lines.append(
+            f"• {p['store']}: ₹{p['price']:.2f} ({p['cut']}% off, was ₹{p['regular_price']:.2f})"
+        )
     return "\n".join(lines)
 
 
-def get_historical_low_price(title: str) -> str:
-    logger.info("get_historical_low_price called: title=%s", title)
+def get_historical_low_price(user_id: str, title: str) -> str:
     game = search_game(title)
     if game is None:
         return f"Sorry, '{title}' was not found on IsThereAnyDeal."
@@ -98,10 +82,8 @@ def get_historical_low_price(title: str) -> str:
     return f"The all-time historical low for **{game['title']}** is ₹{low:.2f}."
 
 
-def get_recent_deals() -> str:
-    logger.info("get_recent_deals called")
-    deals = db_get_recent_deals()
-    logger.info("Found %d recent deal(s)", len(deals))
+def get_recent_deals(user_id: str) -> str:
+    deals = db_get_recent_deals(user_id)
     if not deals:
         return "No recent deals found."
     lines = "\n".join(
@@ -112,8 +94,7 @@ def get_recent_deals() -> str:
     return f"**Recent deals I found:**\n{lines}"
 
 
-def add_watch(url: str, target_price: float = None) -> str:
-    logger.info("add_watch called: url=%s, target_price=%s", url, target_price)
+def add_watch(user_id: str, url: str, target_price: float = None) -> str:
     watch = fetch_swisstimehouse(url)
     if watch is None:
         return (
@@ -126,6 +107,7 @@ def add_watch(url: str, target_price: float = None) -> str:
             f"What target price (in ₹) should I alert you below?"
         )
     db_add_watch(
+        user_id,
         name=watch["name"],
         brand=watch["brand"],
         reference_no=watch["reference"],
@@ -138,9 +120,8 @@ def add_watch(url: str, target_price: float = None) -> str:
     )
 
 
-def list_watches() -> str:
-    logger.info("list_watches called")
-    watches = db_get_watches()
+def list_watches(user_id: str) -> str:
+    watches = db_get_watches(user_id)
     if not watches:
         return "Your watch list is empty. Add one with a swisstimehouse.com product link."
     lines = ["**Watches you're tracking:**"]
@@ -152,9 +133,8 @@ def list_watches() -> str:
     return "\n".join(lines)
 
 
-def get_watch_price(name: str) -> str:
-    logger.info("get_watch_price called: name=%s", name)
-    match = db_find_watch_by_name(name)
+def get_watch_price(user_id: str, name: str) -> str:
+    match = db_find_watch_by_name(user_id, name)
     if not match or not match.get("swisstimehouse_url"):
         return f"**{name}** isn't on your watch list."
     fetched = fetch_swisstimehouse(match["swisstimehouse_url"])
@@ -163,18 +143,14 @@ def get_watch_price(name: str) -> str:
     return f"**{match['name']}** is currently ₹{fetched['price']:.2f} on Swiss Time House."
 
 
-def set_watch_target(name: str, target_price: float) -> str:
-    logger.info("set_watch_target called: name=%s, target_price=%s", name, target_price)
-    updated = db_set_watch_target(name, target_price)
-    if not updated:
+def set_watch_target(user_id: str, name: str, target_price: float) -> str:
+    if not db_set_watch_target(user_id, name, target_price):
         return f"**{name}** wasn't found in your watch list."
     return f"Target price for **{name}** set to ₹{target_price:.2f}."
 
 
-def remove_watch(name: str) -> str:
-    logger.info("remove_watch called: name=%s", name)
-    removed = db_remove_watch(name)
-    if removed:
+def remove_watch(user_id: str, name: str) -> str:
+    if db_remove_watch(user_id, name):
         return f"No longer tracking **{name}**."
     return f"**{name}** wasn't in your watch list."
 
@@ -185,7 +161,10 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "add_game",
-            "description": "Add a game to the watchlist to track its price. Optionally set a target price threshold in INR to only alert when the price drops below that amount.",
+            "description": (
+                "Add a game to the watchlist to track its price. Optionally set a target price "
+                "threshold in INR to only alert when the price drops below that amount."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -195,7 +174,10 @@ TOOLS = [
                     },
                     "target_price": {
                         "type": "number",
-                        "description": "Optional price threshold in INR. Only alert when price drops below this amount.",
+                        "description": (
+                            "Optional price threshold in INR. "
+                            "Only alert when price drops below this amount."
+                        ),
                     },
                 },
                 "required": ["title"],
@@ -206,7 +188,10 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "set_target_price",
-            "description": "Set or update a custom target price threshold in INR for a tracked game. Pass null to remove the threshold and revert to historical low alerts.",
+            "description": (
+                "Set or update a custom target price threshold in INR for a tracked game. "
+                "Pass null to remove the threshold and revert to historical low alerts."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -294,17 +279,12 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "clear_memory",
-            "description": "Clear and summarize the conversation history. Use when the user asks to 'clear memory', 'reset conversation', 'start fresh', or similar. This summarizes the key facts and removes old messages.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "The user's ID (passed automatically).",
-                    }
-                },
-                "required": ["user_id"],
-            },
+            "description": (
+                "Clear and summarize the conversation history. Use when the user asks to "
+                "'clear memory', 'reset conversation', 'start fresh', or similar. "
+                "This summarizes the key facts and removes old messages."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
     {
@@ -411,10 +391,10 @@ _FUNCTION_MAP = {
 }
 
 
-def dispatch(name: str, arguments: dict) -> str:
-    """Execute a tool by name with the given arguments."""
+def dispatch(name: str, arguments: dict, user_id: str) -> str:
+    """Execute a tool by name, injecting the current user_id as the first argument."""
     fn = _FUNCTION_MAP.get(name)
     if fn is None:
         logger.error("Unknown tool requested: %s", name)
         return f"Unknown tool: {name}"
-    return fn(**(arguments or {}))
+    return fn(user_id, **(arguments or {}))

@@ -6,17 +6,17 @@ def test_add_game_success(mocker):
 
     mocker.patch("bot.functions.search_game", return_value={"id": "abc123", "title": "Elden Ring"})
     mock_db_add = mocker.patch("bot.functions.db_add_game", return_value={"title": "Elden Ring"})
-    result = add_game("Elden Ring")
+    result = add_game("userA", "Elden Ring")
     assert "Elden Ring" in result
     assert "tracking" in result.lower()
-    mock_db_add.assert_called_once_with("Elden Ring", "abc123", target_price=None)
+    mock_db_add.assert_called_once_with("userA", "Elden Ring", "abc123", target_price=None)
 
 
 def test_add_game_not_found(mocker):
     from bot.functions import add_game
 
     mocker.patch("bot.functions.search_game", return_value=None)
-    result = add_game("Nonexistent XYZ 99999")
+    result = add_game("userA", "Nonexistent XYZ 99999")
     assert "not found" in result.lower()
 
 
@@ -24,7 +24,7 @@ def test_remove_game_success(mocker):
     from bot.functions import remove_game
 
     mocker.patch("bot.functions.db_remove_game", return_value=True)
-    result = remove_game("Elden Ring")
+    result = remove_game("userA", "Elden Ring")
     assert "removed" in result.lower() or "no longer tracking" in result.lower()
 
 
@@ -32,7 +32,7 @@ def test_remove_game_not_found(mocker):
     from bot.functions import remove_game
 
     mocker.patch("bot.functions.db_remove_game", return_value=False)
-    result = remove_game("Unknown Game")
+    result = remove_game("userA", "Unknown Game")
     assert "not found" in result.lower() or "wasn't" in result.lower()
 
 
@@ -46,7 +46,7 @@ def test_list_games_with_games(mocker):
             {"title": "Hollow Knight"},
         ],
     )
-    result = list_games()
+    result = list_games("userA")
     assert "Elden Ring" in result
     assert "Hollow Knight" in result
 
@@ -55,7 +55,7 @@ def test_list_games_empty(mocker):
     from bot.functions import list_games
 
     mocker.patch("bot.functions.db_get_games", return_value=[])
-    result = list_games()
+    result = list_games("userA")
     assert "no games" in result.lower() or "empty" in result.lower()
 
 
@@ -67,7 +67,7 @@ def test_get_current_price_success(mocker):
         "bot.functions.get_all_prices",
         return_value=[{"price": 9.99, "regular_price": 24.99, "store": "Steam", "cut": 60}],
     )
-    result = get_current_price("Hades")
+    result = get_current_price("userA", "Hades")
     assert "9.99" in result
     assert "Steam" in result
 
@@ -76,7 +76,7 @@ def test_get_current_price_not_found(mocker):
     from bot.functions import get_current_price
 
     mocker.patch("bot.functions.search_game", return_value=None)
-    result = get_current_price("Unknown Game")
+    result = get_current_price("userA", "Unknown Game")
     assert "not found" in result.lower()
 
 
@@ -89,7 +89,7 @@ def test_get_recent_deals_with_results(mocker):
             {"price": 9.99, "notified_at": "2026-04-04T00:00:00+00:00", "games": {"title": "Hades"}}
         ],
     )
-    result = get_recent_deals()
+    result = get_recent_deals("userA")
     assert "Hades" in result
     assert "9.99" in result
 
@@ -98,7 +98,7 @@ def test_get_recent_deals_empty(mocker):
     from bot.functions import get_recent_deals
 
     mocker.patch("bot.functions.db_get_recent_deals", return_value=[])
-    result = get_recent_deals()
+    result = get_recent_deals("userA")
     assert "no recent" in result.lower() or "no deals" in result.lower()
 
 
@@ -106,14 +106,14 @@ def test_dispatch_routes_to_correct_function(mocker):
     from bot.functions import dispatch
 
     mocker.patch("bot.functions.db_remove_game", return_value=True)
-    result = dispatch("remove_game", {"title": "Hades"})
+    result = dispatch("remove_game", {"title": "Hades"}, "userA")
     assert "no longer tracking" in result.lower() or "removed" in result.lower()
 
 
 def test_dispatch_returns_error_for_unknown_tool():
     from bot.functions import dispatch
 
-    result = dispatch("nonexistent_tool", {})
+    result = dispatch("nonexistent_tool", {}, "userA")
     assert "unknown tool" in result.lower()
 
 
@@ -125,7 +125,7 @@ def test_add_watch_asks_for_target_when_missing(mocker):
 
     mocker.patch("bot.functions.fetch_swisstimehouse", return_value=_CASIO_WATCH)
     mock_db = mocker.patch("bot.functions.db_add_watch")
-    result = add_watch("https://www.swisstimehouse.com/casio-g1714")
+    result = add_watch("userA", "https://www.swisstimehouse.com/casio-g1714")
     assert "34997" in result
     assert "target" in result.lower()
     mock_db.assert_not_called()
@@ -138,10 +138,11 @@ def test_add_watch_stores_with_target(mocker):
     mock_db = mocker.patch(
         "bot.functions.db_add_watch", return_value={"id": "w1", "name": "Casio G1714"}
     )
-    result = add_watch("https://www.swisstimehouse.com/casio-g1714", target_price=30000.0)
+    result = add_watch("userA", "https://www.swisstimehouse.com/casio-g1714", target_price=30000.0)
     assert "Casio G1714" in result
     assert "30000" in result
     mock_db.assert_called_once_with(
+        "userA",
         name="Casio G1714",
         brand="Casio",
         reference_no="G1714",
@@ -154,7 +155,7 @@ def test_add_watch_fetch_failure(mocker):
     from bot.functions import add_watch
 
     mocker.patch("bot.functions.fetch_swisstimehouse", return_value=None)
-    result = add_watch("https://www.swisstimehouse.com/bad", target_price=30000.0)
+    result = add_watch("userA", "https://www.swisstimehouse.com/bad", target_price=30000.0)
     assert (
         "couldn't" in result.lower()
         or "could not" in result.lower()
@@ -169,7 +170,7 @@ def test_list_watches_with_rows(mocker):
         "bot.functions.db_get_watches",
         return_value=[{"name": "Casio G1714", "target_price": 30000.0}],
     )
-    result = list_watches()
+    result = list_watches("userA")
     assert "Casio G1714" in result
     assert "30000" in result
 
@@ -178,7 +179,7 @@ def test_list_watches_empty(mocker):
     from bot.functions import list_watches
 
     mocker.patch("bot.functions.db_get_watches", return_value=[])
-    result = list_watches()
+    result = list_watches("userA")
     assert "empty" in result.lower() or "no watches" in result.lower()
 
 
@@ -186,7 +187,7 @@ def test_set_watch_target_success(mocker):
     from bot.functions import set_watch_target
 
     mocker.patch("bot.functions.db_set_watch_target", return_value=True)
-    result = set_watch_target("Casio G1714", 25000.0)
+    result = set_watch_target("userA", "Casio G1714", 25000.0)
     assert "25000" in result
 
 
@@ -194,7 +195,7 @@ def test_remove_watch_success(mocker):
     from bot.functions import remove_watch
 
     mocker.patch("bot.functions.db_remove_watch", return_value=True)
-    result = remove_watch("Casio G1714")
+    result = remove_watch("userA", "Casio G1714")
     assert "no longer" in result.lower() or "removed" in result.lower()
 
 
@@ -208,6 +209,7 @@ def test_dispatch_routes_to_add_watch(mocker):
     result = dispatch(
         "add_watch",
         {"url": "https://www.swisstimehouse.com/casio-g1714", "target_price": 30000.0},
+        "userA",
     )
     assert "Casio G1714" in result
 
@@ -216,7 +218,7 @@ def test_get_watch_price_not_found(mocker):
     from bot.functions import get_watch_price
 
     mocker.patch("bot.functions.db_find_watch_by_name", return_value=None)
-    result = get_watch_price("Unknown Watch")
+    result = get_watch_price("userA", "Unknown Watch")
     assert "isn't on your watch list" in result.lower() or "not" in result.lower()
 
 
@@ -234,5 +236,26 @@ def test_get_watch_price_success(mocker):
             "reference": "G1714", "price": 33000.0,
         },
     )
-    result = get_watch_price("casio g1714")
+    result = get_watch_price("userA", "casio g1714")
     assert "33000" in result
+
+
+def test_dispatch_injects_user_id(mocker):
+    from bot.functions import dispatch
+    mock_db = mocker.patch("bot.functions.db_get_games", return_value=[])
+    dispatch("list_games", {}, "userA")
+    mock_db.assert_called_once_with("userA")
+
+
+def test_dispatch_add_game_passes_user_id(mocker):
+    from bot.functions import dispatch
+    mocker.patch("bot.functions.search_game", return_value={"id": "itad1", "title": "Elden Ring"})
+    mock_add = mocker.patch("bot.functions.db_add_game", return_value={"title": "Elden Ring"})
+    dispatch("add_game", {"title": "Elden Ring", "target_price": 500.0}, "userA")
+    mock_add.assert_called_once_with("userA", "Elden Ring", "itad1", target_price=500.0)
+
+
+def test_clear_memory_schema_has_no_user_id():
+    from bot.functions import TOOLS
+    tool = next(t for t in TOOLS if t["function"]["name"] == "clear_memory")
+    assert "user_id" not in tool["function"]["parameters"]["properties"]
