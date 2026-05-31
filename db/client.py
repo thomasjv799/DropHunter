@@ -57,18 +57,22 @@ def _normalize(text: str) -> str:
     return re.sub(r'[^a-z0-9 ]', '', text.lower()).strip()
 
 
+def _fuzzy_find(rows: list, query: str, key: str) -> Optional[dict]:
+    """Find a row whose `key` fuzzy-matches `query`: exact normalized match first,
+    then substring either way. Returns the row or None."""
+    norm_query = _normalize(query)
+    for r in rows:
+        if _normalize(r[key]) == norm_query:
+            return r
+    for r in rows:
+        if norm_query in _normalize(r[key]) or _normalize(r[key]) in norm_query:
+            return r
+    return None
+
+
 def _find_game_by_title(title: str) -> Optional[dict]:
     """Find a game in the watchlist by fuzzy title match. Returns the row or None."""
-    games = get_games()
-    norm_query = _normalize(title)
-    # Try exact normalized match first, then substring match
-    for g in games:
-        if _normalize(g["title"]) == norm_query:
-            return g
-    for g in games:
-        if norm_query in _normalize(g["title"]) or _normalize(g["title"]) in norm_query:
-            return g
-    return None
+    return _fuzzy_find(get_games(), title, "title")
 
 
 def set_target_price(title: str, target_price: Optional[float]) -> bool:
@@ -392,15 +396,7 @@ def add_watch(
 
 def _find_watch_by_name(name: str) -> Optional[dict]:
     """Fuzzy-match a watch by name, reusing the same normalization as games."""
-    norm_query = _normalize(name)
-    watches = get_watches()
-    for w in watches:
-        if _normalize(w["name"]) == norm_query:
-            return w
-    for w in watches:
-        if norm_query in _normalize(w["name"]) or _normalize(w["name"]) in norm_query:
-            return w
-    return None
+    return _fuzzy_find(get_watches(), name, "name")
 
 
 def set_watch_target(name: str, target_price: float) -> bool:

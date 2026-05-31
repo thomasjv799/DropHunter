@@ -194,9 +194,8 @@ def run(games: bool = True, watches: bool = True) -> None:
 
 def _parse_scope(argv: list[str]) -> tuple[bool, bool]:
     """Return (run_games, run_watches). No --games/--watches flag means run both."""
-    flags = set(argv)
-    if "--games" in flags or "--watches" in flags:
-        return ("--games" in flags, "--watches" in flags)
+    if "--games" in argv or "--watches" in argv:
+        return ("--games" in argv, "--watches" in argv)
     return (True, True)
 
 
