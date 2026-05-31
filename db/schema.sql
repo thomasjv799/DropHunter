@@ -1,3 +1,20 @@
+-- DropHunter — authoritative database schema.
+--
+-- This is the single source of truth for all tables. It is idempotent
+-- (every statement uses IF NOT EXISTS), so running it on a fresh database
+-- creates everything, and re-running it on an existing one is a no-op.
+--
+-- Bootstrap a brand-new database (e.g. self-hosted Postgres) in one shot:
+--     psql "$DATABASE_URL" -f db/schema.sql
+--
+-- No data migration is needed on a fresh DB — the per-user columns
+-- (games.user_id, watches.user_id) and composite uniqueness are already
+-- part of these definitions. (The one-time backfill that existed for the
+-- live Supabase DB only mattered because rows predated multi-user.)
+--
+-- pgcrypto provides gen_random_uuid(); on PostgreSQL 13+ it is also
+-- built-in, so this extension line is harmless belt-and-suspenders.
+
 create extension if not exists "pgcrypto";
 
 create table if not exists games (

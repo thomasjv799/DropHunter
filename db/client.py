@@ -7,9 +7,13 @@ from dotenv import load_dotenv
 from supabase import Client, create_client
 
 """
-Supabase client and query helpers for DropHunter.
+Supabase/PostgreSQL client and query helpers for DropHunter.
 
-Tables: games, price_history, notifications_log
+Tables (see db/schema.sql for the authoritative definitions):
+- games, price_history, notifications_log        — game tracking (per-user via games.user_id)
+- watches, watch_price_history, watch_notifications_log — watch tracking (per-user via watches.user_id)
+- chat_messages, chat_summary                    — per-user conversational memory
+- allowed_users                                  — access allowlist (owner bootstrapped via OWNER_ID)
 """
 
 logger = logging.getLogger("drophunter.db")

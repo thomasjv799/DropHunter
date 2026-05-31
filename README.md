@@ -171,3 +171,13 @@ Price sweeps run on a 12-hour schedule via **two GitHub Actions workflows**, spl
 - **Watch Price Check** (`.github/workflows/watch_check.yml`) — **self-hosted runner on the Mac mini** (residential IP, so `cloudscraper` passes Cloudflare), runs `python -m cron.price_check --watches`.
 
 Run a sweep manually with `python -m cron.price_check` (both), or pass `--games` / `--watches` for a single type.
+
+### Database
+
+`db/schema.sql` is the authoritative schema and is idempotent (`IF NOT EXISTS` throughout). To bootstrap a fresh database — e.g. when moving from Supabase to a self-hosted PostgreSQL — create the database, point `SUPABASE_URL`/`SUPABASE_KEY` (or a future `DATABASE_URL`) at it, and run:
+
+```bash
+psql "$DATABASE_URL" -f db/schema.sql
+```
+
+This creates all tables with the per-user `user_id` columns and composite uniqueness already in place, so **no data migration is needed on a fresh DB**. The one-time `ALTER TABLE` backfill documented in `docs/superpowers/plans/2026-05-31-multi-user-support.md` was only for the existing Supabase rows that predated multi-user.
