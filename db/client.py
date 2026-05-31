@@ -30,10 +30,13 @@ def _get_client() -> Client:
 
 
 def get_games(user_id: Optional[str] = None) -> list:
+    """All games (user_id=None, used by the cron sweep) or one user's games."""
     query = _get_client().table("games").select("*")
     if user_id is not None:
         query = query.eq("user_id", user_id)
-    return query.execute().data
+    data = query.execute().data
+    logger.debug("Fetched %d game(s) for user_id=%s", len(data), user_id)
+    return data
 
 
 def add_game(user_id: str, title: str, itad_id: str, target_price: Optional[float] = None) -> dict:
@@ -65,6 +68,7 @@ def _fuzzy_find(rows: list, query: str, key: str) -> Optional[dict]:
 
 
 def _find_game_by_title(user_id: str, title: str) -> Optional[dict]:
+    """Find one of the user's games by fuzzy title match. Returns the row or None."""
     return _fuzzy_find(get_games(user_id), title, "title")
 
 
@@ -156,6 +160,8 @@ def log_notification(game_id: str, price: float) -> dict:
 
 
 def get_recent_deals(user_id: str, limit: int = 5) -> list:
+    # `games.user_id` must be in the select for PostgREST to filter on the embedded
+    # resource below; `!inner` makes it an inner join so only this user's deals match.
     return (
         _get_client()
         .table("notifications_log")
