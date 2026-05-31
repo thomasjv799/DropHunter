@@ -259,13 +259,14 @@ def test_add_watch_upserts(mocker):
     mocker.patch.object(client, "_get_client", return_value=mock_supa)
 
     result = client.add_watch(
-        name="Casio G1714", brand="Casio", reference_no="G1714",
+        "A", name="Casio G1714", brand="Casio", reference_no="G1714",
         target_price=30000.0, swisstimehouse_url="https://www.swisstimehouse.com/casio-g1714",
     )
     assert result["id"] == "w1"
     fake_table.upsert.assert_called_once()
     args, kwargs = fake_table.upsert.call_args
-    assert kwargs.get("on_conflict") == "swisstimehouse_url"
+    assert args[0]["user_id"] == "A"
+    assert kwargs.get("on_conflict") == "user_id,swisstimehouse_url"
     assert args[0]["target_price"] == 30000.0
 
 
@@ -273,13 +274,13 @@ def test_get_watches_returns_rows(mocker):
     from db import client
 
     fake_table = mocker.MagicMock()
-    fake_table.select.return_value.execute.return_value.data = [
+    fake_table.select.return_value.eq.return_value.execute.return_value.data = [
         {"id": "w1", "name": "Casio G1714"}
     ]
     mock_supa = mocker.MagicMock(table=lambda *_: fake_table)
     mocker.patch.object(client, "_get_client", return_value=mock_supa)
 
-    rows = client.get_watches()
+    rows = client.get_watches("A")
     assert rows == [{"id": "w1", "name": "Casio G1714"}]
 
 
@@ -294,14 +295,16 @@ def test_set_watch_target_updates_match(mocker):
     mock_supa = mocker.MagicMock(table=lambda *_: fake_table)
     mocker.patch.object(client, "_get_client", return_value=mock_supa)
 
-    assert client.set_watch_target("casio g1714", 25000.0) is True
+    assert client.set_watch_target("A", "casio g1714", 25000.0) is True
+    client.get_watches.assert_called_once_with("A")
 
 
 def test_set_watch_target_no_match(mocker):
     from db import client
 
     mocker.patch.object(client, "get_watches", return_value=[])
-    assert client.set_watch_target("nonexistent", 25000.0) is False
+    assert client.set_watch_target("A", "nonexistent", 25000.0) is False
+    client.get_watches.assert_called_once_with("A")
 
 
 def test_remove_watch_deletes_match(mocker):
@@ -315,7 +318,8 @@ def test_remove_watch_deletes_match(mocker):
     mock_supa = mocker.MagicMock(table=lambda *_: fake_table)
     mocker.patch.object(client, "_get_client", return_value=mock_supa)
 
-    assert client.remove_watch("Casio G1714") is True
+    assert client.remove_watch("A", "Casio G1714") is True
+    client.get_watches.assert_called_once_with("A")
 
 
 def test_get_last_watch_notified_price(mocker):
@@ -456,3 +460,58 @@ def test_remove_game_scoped(mocker):
                         return_value=mocker.MagicMock(table=lambda *_: fake_table))
     assert client.remove_game("A", "Elden Ring") is True
     client.get_games.assert_called_once_with("A")
+
+
+def test_get_watches_scopes_to_user(mocker):
+    from db import client
+    fake_table = mocker.MagicMock()
+    fake_table.select.return_value.eq.return_value.execute.return_value.data = [{"id": "w1"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    client.get_watches("A")
+    fake_table.select.return_value.eq.assert_called_once_with("user_id", "A")
+
+
+def test_get_watches_no_user_returns_all(mocker):
+    from db import client
+    fake_table = mocker.MagicMock()
+    fake_table.select.return_value.execute.return_value.data = [{"id": "w1"}, {"id": "w2"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    assert len(client.get_watches()) == 2
+    fake_table.select.return_value.eq.assert_not_called()
+
+
+def test_add_watch_scopes_and_composite_conflict(mocker):
+    from db import client
+    fake_table = mocker.MagicMock()
+    fake_table.upsert.return_value.execute.return_value.data = [{"id": "w1"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    client.add_watch("A", name="Casio", brand="Casio", reference_no="G1",
+                     target_price=30000.0, swisstimehouse_url="https://www.swisstimehouse.com/x")
+    args, kwargs = fake_table.upsert.call_args
+    assert args[0]["user_id"] == "A"
+    assert kwargs.get("on_conflict") == "user_id,swisstimehouse_url"
+
+
+def test_set_watch_target_scoped(mocker):
+    from db import client
+    mocker.patch.object(client, "get_watches", return_value=[{"id": "w1", "name": "Casio G1714"}])
+    fake_table = mocker.MagicMock()
+    fake_table.update.return_value.eq.return_value.execute.return_value.data = [{"id": "w1"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    assert client.set_watch_target("A", "casio g1714", 25000.0) is True
+    client.get_watches.assert_called_once_with("A")
+
+
+def test_remove_watch_scoped(mocker):
+    from db import client
+    mocker.patch.object(client, "get_watches", return_value=[{"id": "w1", "name": "Casio G1714"}])
+    fake_table = mocker.MagicMock()
+    fake_table.delete.return_value.eq.return_value.execute.return_value.data = [{"id": "w1"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    assert client.remove_watch("A", "Casio G1714") is True
+    client.get_watches.assert_called_once_with("A")

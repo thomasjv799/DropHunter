@@ -355,20 +355,25 @@ def clear_memory(user_id: str) -> None:
 # Watch helpers
 # ---------------------------------------------------------------------------
 
-def get_watches() -> list:
-    logger.debug("Fetching all watches")
-    return _get_client().table("watches").select("*").execute().data
+def get_watches(user_id: Optional[str] = None) -> list:
+    """All watches (user_id=None, used by the cron sweep) or one user's watches."""
+    query = _get_client().table("watches").select("*")
+    if user_id is not None:
+        query = query.eq("user_id", user_id)
+    return query.execute().data
 
 
 def add_watch(
+    user_id: str,
     name: str,
     brand: Optional[str],
     reference_no: Optional[str],
     target_price: float,
     swisstimehouse_url: str,
 ) -> dict:
-    logger.info("Adding watch: %s (target=%s, url=%s)", name, target_price, swisstimehouse_url)
+    logger.info("Adding watch for %s: %s (target=%s)", user_id, name, target_price)
     row = {
+        "user_id": user_id,
         "name": name,
         "brand": brand,
         "reference_no": reference_no,
@@ -376,7 +381,10 @@ def add_watch(
         "swisstimehouse_url": swisstimehouse_url,
     }
     result = (
-        _get_client().table("watches").upsert(row, on_conflict="swisstimehouse_url").execute()
+        _get_client()
+        .table("watches")
+        .upsert(row, on_conflict="user_id,swisstimehouse_url")
+        .execute()
     )
     if not result.data:
         raise RuntimeError(f"Insert into 'watches' returned no data: {result}")
@@ -384,31 +392,26 @@ def add_watch(
     return result.data[0]
 
 
-def _find_watch_by_name(name: str) -> Optional[dict]:
-    """Fuzzy-match a watch by name, reusing the same normalization as games."""
-    return _fuzzy_find(get_watches(), name, "name")
+def _find_watch_by_name(user_id: str, name: str) -> Optional[dict]:
+    """Find one of the user's watches by fuzzy name match. Returns the row or None."""
+    return _fuzzy_find(get_watches(user_id), name, "name")
 
 
-def set_watch_target(name: str, target_price: float) -> bool:
-    logger.info("Setting watch target for %s: %s", name, target_price)
-    watch = _find_watch_by_name(name)
+def set_watch_target(user_id: str, name: str, target_price: float) -> bool:
+    logger.info("Setting watch target for %s/%s: %s", user_id, name, target_price)
+    watch = _find_watch_by_name(user_id, name)
     if not watch:
-        logger.warning("No watch matched '%s' for target update", name)
         return False
     result = (
-        _get_client()
-        .table("watches")
-        .update({"target_price": target_price})
-        .eq("id", watch["id"])
-        .execute()
+        _get_client().table("watches").update({"target_price": target_price})
+        .eq("id", watch["id"]).execute()
     )
     return len(result.data) > 0
 
 
-def remove_watch(name: str) -> bool:
-    watch = _find_watch_by_name(name)
+def remove_watch(user_id: str, name: str) -> bool:
+    watch = _find_watch_by_name(user_id, name)
     if not watch:
-        logger.warning("No watch matched '%s' for removal", name)
         return False
     result = _get_client().table("watches").delete().eq("id", watch["id"]).execute()
     logger.info("Watch removed: %s", watch["name"])
