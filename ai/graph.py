@@ -99,11 +99,11 @@ def agent(state: GraphState) -> GraphState:
 
 
 @observe()
-def _run_tool(name: str, arguments: dict) -> str:
+def _run_tool(name: str, arguments: dict, user_id: str) -> str:
     """Execute a single tool call and record it as a child Langfuse span."""
     get_client().update_current_span(name=f"tool:{name}", input=arguments)
     try:
-        result = dispatch(name, arguments)
+        result = dispatch(name, arguments, user_id)
     except Exception as exc:
         get_client().update_current_span(output=f"Error: {exc}", level="ERROR")
         raise
@@ -123,7 +123,7 @@ def execute_tools(state: GraphState) -> GraphState:
     tool_responses = []
     for tc in state["pending_tool_calls"]:
         try:
-            result = _run_tool(tc["name"], tc.get("arguments") or {})
+            result = _run_tool(tc["name"], tc.get("arguments") or {}, state["user_id"])
             tool_responses.append(result)
         except Exception as exc:
             tool_responses.append(f"Error in {tc['name']}: {exc}")

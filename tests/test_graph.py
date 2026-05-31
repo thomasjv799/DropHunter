@@ -125,3 +125,10 @@ def test_route_after_tools_goes_to_agent_when_no_reply(mocker):
 def test_route_after_tools_goes_to_save_when_reply(mocker):
     state = _base_state(final_reply="Done.", pending_tool_calls=[])
     assert route_after_tools(state) == "save_memory"
+
+
+def test_run_tool_forwards_user_id(mocker):
+    from ai import graph
+    mock_dispatch = mocker.patch("ai.graph.dispatch", return_value="ok")
+    graph._run_tool("list_games", {}, "userA")
+    mock_dispatch.assert_called_once_with("list_games", {}, "userA")
