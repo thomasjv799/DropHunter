@@ -328,3 +328,20 @@ def test_process_watch_dms_owner(sample_watch, mocker):
     process_watch(watch)
     mock_dm.assert_called_once()
     assert mock_dm.call_args.args[0] == "ownerA"
+
+
+def test_process_watch_skips_revoked_owner(sample_watch, mocker):
+    from cron.price_check import process_watch
+    watch = {**sample_watch, "user_id": "revoked"}
+    mocker.patch(
+        "cron.price_check.fetch_swisstimehouse",
+        return_value={
+            "name": "Casio G1714", "brand": "Casio", "reference": "G1714", "price": 29000.0
+        },
+    )
+    mocker.patch("cron.price_check.insert_watch_price_history")
+    mocker.patch("cron.price_check.get_last_watch_notified_price", return_value=None)
+    mocker.patch("cron.price_check.is_user_allowed", return_value=False)
+    mock_dm = mocker.patch("cron.price_check.send_dm")
+    process_watch(watch)
+    mock_dm.assert_not_called()
