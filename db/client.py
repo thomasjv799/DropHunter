@@ -477,3 +477,45 @@ def log_watch_notification(watch_id: str, price: float, seller: str) -> dict:
     if not result.data:
         raise RuntimeError(f"Insert into 'watch_notifications_log' returned no data: {result}")
     return result.data[0]
+
+
+# ---------------------------------------------------------------------------
+# Allowlist helpers
+# ---------------------------------------------------------------------------
+
+def _owner_id() -> Optional[str]:
+    load_dotenv()
+    return os.environ.get("OWNER_ID")
+
+
+def is_user_allowed(user_id: str) -> bool:
+    """True if the user is the owner (env) or present in allowed_users."""
+    if user_id == _owner_id():
+        return True
+    result = (
+        _get_client().table("allowed_users").select("user_id").eq("user_id", user_id).execute()
+    )
+    return len(result.data) > 0
+
+
+def add_allowed_user(user_id: str, added_by: str) -> dict:
+    logger.info("Allowing user %s (by %s)", user_id, added_by)
+    result = (
+        _get_client()
+        .table("allowed_users")
+        .upsert({"user_id": user_id, "added_by": added_by}, on_conflict="user_id")
+        .execute()
+    )
+    if not result.data:
+        raise RuntimeError(f"Insert into 'allowed_users' returned no data: {result}")
+    return result.data[0]
+
+
+def remove_allowed_user(user_id: str) -> bool:
+    logger.info("Revoking user %s", user_id)
+    result = _get_client().table("allowed_users").delete().eq("user_id", user_id).execute()
+    return len(result.data) > 0
+
+
+def list_allowed_users() -> list:
+    return _get_client().table("allowed_users").select("*").execute().data

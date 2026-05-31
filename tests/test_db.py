@@ -340,3 +340,58 @@ def test_log_watch_notification(mocker):
     assert result["id"] == "n1"
     args, _ = fake_table.insert.call_args
     assert args[0]["seller"] == "Swiss Time House"
+
+
+def test_is_user_allowed_owner(monkeypatch):
+    from db import client
+    monkeypatch.setenv("OWNER_ID", "owner123")
+    assert client.is_user_allowed("owner123") is True
+
+
+def test_is_user_allowed_allowlisted(monkeypatch, mocker):
+    from db import client
+    monkeypatch.setenv("OWNER_ID", "owner123")
+    fake_table = mocker.MagicMock()
+    fake_table.select.return_value.eq.return_value.execute.return_value.data = [{"user_id": "u2"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    assert client.is_user_allowed("u2") is True
+
+
+def test_is_user_allowed_stranger(monkeypatch, mocker):
+    from db import client
+    monkeypatch.setenv("OWNER_ID", "owner123")
+    fake_table = mocker.MagicMock()
+    fake_table.select.return_value.eq.return_value.execute.return_value.data = []
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    assert client.is_user_allowed("stranger") is False
+
+
+def test_add_allowed_user(mocker):
+    from db import client
+    fake_table = mocker.MagicMock()
+    fake_table.upsert.return_value.execute.return_value.data = [
+        {"user_id": "u2", "added_by": "owner123"}
+    ]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    assert client.add_allowed_user("u2", "owner123")["user_id"] == "u2"
+
+
+def test_remove_allowed_user(mocker):
+    from db import client
+    fake_table = mocker.MagicMock()
+    fake_table.delete.return_value.eq.return_value.execute.return_value.data = [{"user_id": "u2"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    assert client.remove_allowed_user("u2") is True
+
+
+def test_list_allowed_users(mocker):
+    from db import client
+    fake_table = mocker.MagicMock()
+    fake_table.select.return_value.execute.return_value.data = [{"user_id": "u2"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    assert client.list_allowed_users() == [{"user_id": "u2"}]

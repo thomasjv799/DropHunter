@@ -73,3 +73,9 @@ create table if not exists watch_notifications_log (
 
 create index if not exists idx_watch_price_history_watch_id on watch_price_history(watch_id);
 create index if not exists idx_watch_notifications_log_watch_id on watch_notifications_log(watch_id);
+
+create table if not exists allowed_users (
+    user_id text primary key,
+    added_by text null,
+    added_at timestamptz not null default now()
+);
