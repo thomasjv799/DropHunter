@@ -29,25 +29,19 @@ def _get_client() -> Client:
     return _client
 
 
-def get_games() -> list:
-    logger.debug("Fetching all games from watchlist")
-    data = _get_client().table("games").select("*").execute().data
-    logger.debug("Found %d game(s)", len(data))
-    return data
+def get_games(user_id: Optional[str] = None) -> list:
+    query = _get_client().table("games").select("*")
+    if user_id is not None:
+        query = query.eq("user_id", user_id)
+    return query.execute().data
 
 
-def add_game(title: str, itad_id: str, target_price: Optional[float] = None) -> dict:
-    logger.info("Adding game: %s (itad_id=%s, target_price=%s)", title, itad_id, target_price)
-    row = {"title": title, "itad_id": itad_id, "target_price": target_price}
-    result = (
-        _get_client()
-        .table("games")
-        .upsert(row, on_conflict="itad_id")
-        .execute()
-    )
+def add_game(user_id: str, title: str, itad_id: str, target_price: Optional[float] = None) -> dict:
+    logger.info("Adding game for %s: %s (itad_id=%s)", user_id, title, itad_id)
+    row = {"user_id": user_id, "title": title, "itad_id": itad_id, "target_price": target_price}
+    result = _get_client().table("games").upsert(row, on_conflict="user_id,itad_id").execute()
     if not result.data:
         raise RuntimeError(f"Insert into 'games' returned no data: {result}")
-    logger.info("Game added successfully: %s", title)
     return result.data[0]
 
 
@@ -70,14 +64,12 @@ def _fuzzy_find(rows: list, query: str, key: str) -> Optional[dict]:
     return None
 
 
-def _find_game_by_title(title: str) -> Optional[dict]:
-    """Find a game in the watchlist by fuzzy title match. Returns the row or None."""
-    return _fuzzy_find(get_games(), title, "title")
+def _find_game_by_title(user_id: str, title: str) -> Optional[dict]:
+    return _fuzzy_find(get_games(user_id), title, "title")
 
 
-def set_target_price(title: str, target_price: Optional[float]) -> bool:
-    logger.info("Setting target price for %s: %s", title, target_price)
-    game = _find_game_by_title(title)
+def set_target_price(user_id: str, title: str, target_price: Optional[float]) -> bool:
+    game = _find_game_by_title(user_id, title)
     if not game:
         logger.warning("No game matched '%s' for target price update", title)
         return False
@@ -88,24 +80,16 @@ def set_target_price(title: str, target_price: Optional[float]) -> bool:
         .eq("id", game["id"])
         .execute()
     )
-    updated = len(result.data) > 0
-    if updated:
-        logger.info("Target price updated for '%s' (matched '%s'): %s", title, game["title"], target_price)
-    return updated
+    return len(result.data) > 0
 
 
-def remove_game(title: str) -> bool:
-    logger.info("Removing game: %s", title)
-    game = _find_game_by_title(title)
+def remove_game(user_id: str, title: str) -> bool:
+    game = _find_game_by_title(user_id, title)
     if not game:
         logger.warning("No game matched '%s' for removal", title)
         return False
-    result = (
-        _get_client().table("games").delete().eq("id", game["id"]).execute()
-    )
-    removed = len(result.data) > 0
-    logger.info("Game removed: %s (found=%s)", game["title"], removed)
-    return removed
+    result = _get_client().table("games").delete().eq("id", game["id"]).execute()
+    return len(result.data) > 0
 
 
 def insert_price_history(
@@ -171,12 +155,12 @@ def log_notification(game_id: str, price: float) -> dict:
     return result.data[0]
 
 
-def get_recent_deals(limit: int = 5) -> list:
-    logger.debug("Fetching recent deals (limit=%d)", limit)
+def get_recent_deals(user_id: str, limit: int = 5) -> list:
     return (
         _get_client()
         .table("notifications_log")
-        .select("*, games(title)")
+        .select("*, games!inner(title, user_id)")
+        .eq("games.user_id", user_id)
         .order("notified_at", desc=True)
         .limit(limit)
         .execute()

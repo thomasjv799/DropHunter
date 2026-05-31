@@ -30,29 +30,31 @@ def test_add_game_inserts_row(mock_supabase):
     mock_supabase.table.return_value.upsert.return_value.execute.return_value.data = [
         {"id": "abc", "title": "Elden Ring", "itad_id": "eldenring"}
     ]
-    result = add_game("Elden Ring", "eldenring")
+    result = add_game("A", "Elden Ring", "eldenring")
     mock_supabase.table.return_value.upsert.assert_called_once_with(
-        {"title": "Elden Ring", "itad_id": "eldenring", "target_price": None},
-        on_conflict="itad_id",
+        {"user_id": "A", "title": "Elden Ring", "itad_id": "eldenring", "target_price": None},
+        on_conflict="user_id,itad_id",
     )
     assert result["title"] == "Elden Ring"
 
 
-def test_remove_game_deletes_row(mock_supabase):
-    from db.client import remove_game
+def test_remove_game_deletes_row(mocker):
+    from db import client
 
-    chain = mock_supabase.table.return_value.delete.return_value
-    chain.ilike.return_value.execute.return_value.data = [{"id": "abc"}]
-    result = remove_game("Elden Ring")
+    mocker.patch.object(client, "get_games", return_value=[{"id": "abc", "title": "Elden Ring"}])
+    fake_table = mocker.MagicMock()
+    fake_table.delete.return_value.eq.return_value.execute.return_value.data = [{"id": "abc"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    result = client.remove_game("A", "Elden Ring")
     assert result is True
 
 
-def test_remove_game_returns_false_when_not_found(mock_supabase):
-    from db.client import remove_game
+def test_remove_game_returns_false_when_not_found(mocker):
+    from db import client
 
-    chain = mock_supabase.table.return_value.delete.return_value
-    chain.ilike.return_value.execute.return_value.data = []
-    result = remove_game("Unknown Game")
+    mocker.patch.object(client, "get_games", return_value=[])
+    result = client.remove_game("A", "Unknown Game")
     assert result is False
 
 
@@ -136,15 +138,17 @@ def test_log_notification(mock_supabase):
     assert result["game_id"] == "abc"
 
 
-def test_get_recent_deals(mock_supabase):
-    from db.client import get_recent_deals
+def test_get_recent_deals(mocker):
+    from db import client
 
-    chain = mock_supabase.table.return_value.select.return_value
-    chain.order.return_value.limit.return_value \
-        .execute.return_value.data = [
-        {"id": "n1", "price": 9.99, "games": {"title": "Hades"}}
+    fake_table = mocker.MagicMock()
+    chain = fake_table.select.return_value.eq.return_value
+    chain.order.return_value.limit.return_value.execute.return_value.data = [
+        {"id": "n1", "price": 9.99, "games": {"title": "Hades", "user_id": "A"}}
     ]
-    result = get_recent_deals()
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    result = client.get_recent_deals("A")
     assert len(result) == 1
     assert result[0]["games"]["title"] == "Hades"
     assert result[0]["price"] == 9.99
@@ -395,3 +399,60 @@ def test_list_allowed_users(mocker):
     mocker.patch.object(client, "_get_client",
                         return_value=mocker.MagicMock(table=lambda *_: fake_table))
     assert client.list_allowed_users() == [{"user_id": "u2"}]
+
+
+def test_get_games_scopes_to_user(mocker):
+    from db import client
+    fake_table = mocker.MagicMock()
+    chain = fake_table.select.return_value.eq.return_value
+    chain.execute.return_value.data = [{"id": "g1", "user_id": "A"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    rows = client.get_games("A")
+    fake_table.select.return_value.eq.assert_called_once_with("user_id", "A")
+    assert rows == [{"id": "g1", "user_id": "A"}]
+
+
+def test_get_games_no_user_returns_all(mocker):
+    from db import client
+    fake_table = mocker.MagicMock()
+    fake_table.select.return_value.execute.return_value.data = [{"id": "g1"}, {"id": "g2"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    rows = client.get_games()
+    fake_table.select.return_value.eq.assert_not_called()
+    assert len(rows) == 2
+
+
+def test_add_game_scopes_and_composite_conflict(mocker):
+    from db import client
+    fake_table = mocker.MagicMock()
+    fake_table.upsert.return_value.execute.return_value.data = [{"id": "g1"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    client.add_game("A", "Elden Ring", "itad1", target_price=500.0)
+    args, kwargs = fake_table.upsert.call_args
+    assert args[0]["user_id"] == "A"
+    assert kwargs.get("on_conflict") == "user_id,itad_id"
+
+
+def test_set_target_price_scoped(mocker):
+    from db import client
+    mocker.patch.object(client, "get_games", return_value=[{"id": "g1", "title": "Elden Ring"}])
+    fake_table = mocker.MagicMock()
+    fake_table.update.return_value.eq.return_value.execute.return_value.data = [{"id": "g1"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    assert client.set_target_price("A", "elden ring", 400.0) is True
+    client.get_games.assert_called_once_with("A")
+
+
+def test_remove_game_scoped(mocker):
+    from db import client
+    mocker.patch.object(client, "get_games", return_value=[{"id": "g1", "title": "Elden Ring"}])
+    fake_table = mocker.MagicMock()
+    fake_table.delete.return_value.eq.return_value.execute.return_value.data = [{"id": "g1"}]
+    mocker.patch.object(client, "_get_client",
+                        return_value=mocker.MagicMock(table=lambda *_: fake_table))
+    assert client.remove_game("A", "Elden Ring") is True
+    client.get_games.assert_called_once_with("A")
