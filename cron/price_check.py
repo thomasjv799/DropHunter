@@ -9,10 +9,11 @@ from db.client import (
     get_watches,
     insert_price_history,
     insert_watch_price_history,
+    is_user_allowed,
     log_notification,
     log_watch_notification,
 )
-from utils.discord import send_deal_alert, send_watch_alert
+from utils.discord import send_dm
 from utils.itad import get_best_price, get_historical_low
 from utils.watches import fetch_swisstimehouse
 
@@ -76,6 +77,11 @@ def process_game(game: dict) -> None:
         )
         return
 
+    owner = game["user_id"]
+    if not is_user_allowed(owner):
+        logger.info("[%s] Owner %s no longer permitted, skipping alert.", title, owner)
+        return
+
     logger.info("[%s] Deal detected! Generating AI commentary...", title)
     provider = get_provider()
     low_info = f" Historical low: ₹{historical_low}." if historical_low is not None else ""
@@ -85,14 +91,13 @@ def process_game(game: dict) -> None:
         f"({price_data['cut']}% off).{low_info}"
     )
 
-    send_deal_alert(
-        game_title=title,
-        price=price_data["price"],
-        regular_price=price_data["regular_price"],
-        store=price_data["store"],
-        cut=price_data["cut"],
-        ai_commentary=commentary,
+    message = (
+        f"**Deal Alert: {title}**\n"
+        f"₹{price_data['price']:.2f} on {price_data['store']} "
+        f"({price_data['cut']}% off, was ₹{price_data['regular_price']:.2f})\n"
+        f"{commentary}"
     )
+    send_dm(owner, message)
     log_notification(game["id"], price_data["price"])
     logger.info("[%s] Deal alert sent!", title)
 
@@ -138,19 +143,23 @@ def process_watch(watch: dict) -> None:
         )
         return
 
+    owner = watch["user_id"]
+    if not is_user_allowed(owner):
+        logger.info("[%s] Owner %s no longer permitted, skipping alert.", name, owner)
+        return
+
     logger.info("[%s] Deal! ₹%.2f on %s. Generating commentary...", name, price, seller)
     provider = get_provider()
     commentary = provider.generate_text(
         f"Write a one-sentence buy recommendation for the watch '{name}'. "
         f"Current price: ₹{price} on {seller}, below the user's target of ₹{target}."
     )
-    send_watch_alert(
-        watch_name=name,
-        price=price,
-        seller=seller,
-        target_price=target,
-        ai_commentary=commentary,
+    message = (
+        f"**Watch Deal Alert: {name}**\n"
+        f"₹{price:.2f} on {seller} (target was ₹{target:.2f})\n"
+        f"{commentary}"
     )
+    send_dm(owner, message)
     log_watch_notification(watch["id"], price, seller)
     logger.info("[%s] Watch alert sent!", name)
 
