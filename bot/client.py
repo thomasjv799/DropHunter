@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-from typing import Optional
 
 import discord
 from discord import app_commands
@@ -11,20 +10,10 @@ from ai.graph import run_graph
 
 logger = logging.getLogger("drophunter.bot")
 
-_CHANNEL_ID: Optional[int] = None
 
-
-def _get_channel_id() -> int:
-    global _CHANNEL_ID
-    if _CHANNEL_ID is None:
-        load_dotenv()
-        channel_id = os.environ.get("DISCORD_CHANNEL_ID")
-        if not channel_id:
-            raise EnvironmentError(
-                "DISCORD_CHANNEL_ID is not set. Add it to your .env file."
-            )
-        _CHANNEL_ID = int(channel_id)
-    return _CHANNEL_ID
+def _is_owner(user_id: str) -> bool:
+    load_dotenv()
+    return user_id == os.environ.get("OWNER_ID")
 
 
 intents = discord.Intents.default()
@@ -37,7 +26,6 @@ tree = app_commands.CommandTree(bot)
 @bot.event
 async def on_ready():
     logger.info("DropHunter bot ready as %s", bot.user)
-    logger.info("Listening on channel ID: %s", _get_channel_id())
     try:
         synced = await tree.sync()
         logger.info("Synced %d slash command(s)", len(synced))
@@ -49,14 +37,19 @@ async def on_ready():
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
-    is_dm = isinstance(message.channel, discord.DMChannel)
-    if not is_dm and message.channel.id != _get_channel_id():
-        return
+    if not isinstance(message.channel, discord.DMChannel):
+        return  # DM-only
+
+    from db.client import is_user_allowed
 
     user_id = str(message.author.id)
+    if not await asyncio.to_thread(is_user_allowed, user_id):
+        await message.channel.send("Sorry, you're not authorized to use this bot.")
+        logger.info("Rejected unauthorized user %s", user_id)
+        return
+
     user_text = message.content
     logger.info("Message from %s: %s", message.author, user_text[:100])
-
     try:
         async with message.channel.typing():
             reply = await asyncio.to_thread(run_graph, user_id, user_text)
@@ -66,7 +59,6 @@ async def on_message(message: discord.Message):
             f"⚠️ Something went wrong while processing your request.\n"
             f"```\n{type(exc).__name__}: {exc}\n```"
         )
-
     await message.channel.send(reply[:2000])
 
 
@@ -115,6 +107,45 @@ async def resetmemory(interaction: discord.Interaction):
         await interaction.followup.send(
             f"⚠️ Failed to reset memory.\n```\n{type(exc).__name__}: {exc}\n```"
         )
+
+
+@tree.command(name="allow", description="(Owner) Permit a user to use the bot")
+@app_commands.describe(user="The user to permit")
+async def allow(interaction: discord.Interaction, user: discord.User):
+    if not _is_owner(str(interaction.user.id)):
+        await interaction.response.send_message("Owner only.", ephemeral=True)
+        return
+    from db.client import add_allowed_user
+    await asyncio.to_thread(add_allowed_user, str(user.id), str(interaction.user.id))
+    await interaction.response.send_message(f"✅ {user.mention} is now permitted.", ephemeral=True)
+
+
+@tree.command(name="revoke", description="(Owner) Remove a user's access")
+@app_commands.describe(user="The user to revoke")
+async def revoke(interaction: discord.Interaction, user: discord.User):
+    if not _is_owner(str(interaction.user.id)):
+        await interaction.response.send_message("Owner only.", ephemeral=True)
+        return
+    from db.client import remove_allowed_user
+    removed = await asyncio.to_thread(remove_allowed_user, str(user.id))
+    msg = f"🗑️ Revoked {user.mention}." if removed else f"{user.mention} wasn't permitted."
+    await interaction.response.send_message(msg, ephemeral=True)
+
+
+@tree.command(name="listusers", description="(Owner) List permitted users")
+async def listusers(interaction: discord.Interaction):
+    if not _is_owner(str(interaction.user.id)):
+        await interaction.response.send_message("Owner only.", ephemeral=True)
+        return
+    from db.client import list_allowed_users
+    rows = await asyncio.to_thread(list_allowed_users)
+    if not rows:
+        await interaction.response.send_message(
+            "No permitted users yet (owner always allowed).", ephemeral=True
+        )
+        return
+    lines = "\n".join(f"• <@{r['user_id']}>" for r in rows)
+    await interaction.response.send_message(f"**Permitted users:**\n{lines}", ephemeral=True)
 
 
 def run():
