@@ -7,7 +7,7 @@ on:
 
 jobs:
   check-watches:
-    runs-on: self-hosted      # runs on the Mac mini (residential IP, passes Cloudflare)
+    runs-on: self-hosted      # residential IP (Cloudflare bypass) + local Postgres access
 
     steps:
       - name: Checkout
@@ -21,8 +21,7 @@ jobs:
 
       - name: Run watch sweep
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          LOCAL_DB_URL: ${{ secrets.LOCAL_DB_URL }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

@@ -1,3 +1,4 @@
+psycopg2-binary==2.9.12
 supabase==2.4.2
 requests==2.31.0
 discord.py==2.3.2

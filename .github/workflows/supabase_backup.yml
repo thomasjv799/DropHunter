@@ -1,0 +1,27 @@
+name: Supabase Backup
+
+on:
+  schedule:
+    - cron: "0 3 */3 * *"   # 03:00 every 3 days
+  workflow_dispatch:          # allow manual trigger from GitHub UI
+
+jobs:
+  backup:
+    runs-on: self-hosted      # needs local Postgres access
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up venv and install dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Run Supabase backup
+        env:
+          LOCAL_DB_URL: ${{ secrets.LOCAL_DB_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: .venv/bin/python -m cron.supabase_backup
