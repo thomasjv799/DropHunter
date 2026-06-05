@@ -1,9 +1,7 @@
 """
-Syncs the local drophunter Postgres schema to Supabase (backup).
-Runs every 3 days via crontab.
-
-Crontab entry (run at 03:00 every 3 days):
-    0 3 */3 * * cd /home/thomas/repos/DropHunter && python -m cron.supabase_backup >> /var/log/drophunter_backup.log 2>&1
+Syncs local Postgres data to Supabase (backup).
+Covers: drophunter schema (DropHunter) + public schema (Smart Reminder vehicles).
+Runs every 3 days via GitHub Actions (supabase_backup.yml).
 
 Strategy: upsert-only — inserts new rows and updates existing ones by primary key.
 Rows deleted locally are NOT deleted from Supabase (Supabase acts as a cold archive).
@@ -11,7 +9,7 @@ Rows deleted locally are NOT deleted from Supabase (Supabase acts as a cold arch
 
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 import psycopg2
@@ -28,8 +26,8 @@ log = logging.getLogger("supabase_backup")
 
 load_dotenv()
 
-# Tables in FK dependency order. Each entry: (table_name, upsert_conflict_cols)
-TABLES = [
+# drophunter schema tables — FK dependency order. (table, conflict_cols)
+DROPHUNTER_TABLES = [
     ("allowed_users", "user_id"),
     ("games", "user_id,itad_id"),
     ("watches", "user_id,swisstimehouse_url"),
@@ -41,6 +39,13 @@ TABLES = [
     ("chat_messages", "id"),
 ]
 
+# public schema tables — FK dependency order. (table, conflict_cols)
+PUBLIC_TABLES = [
+    ("vehicles", "id"),
+    ("reminder_log", "id"),
+    ("reminder_snooze", "id"),
+]
+
 BATCH_SIZE = 500
 
 
@@ -48,22 +53,22 @@ def _local_conn():
     return psycopg2.connect(os.environ["LOCAL_DB_URL"])
 
 
-def _fetch_local(conn, table: str) -> list:
+def _serialize(row) -> dict:
+    d = {}
+    for k, v in row.items():
+        if isinstance(v, (datetime, date)):
+            d[k] = v.isoformat()
+        elif isinstance(v, Decimal):
+            d[k] = float(v)
+        else:
+            d[k] = v
+    return d
+
+
+def _fetch_local(conn, schema: str, table: str) -> list:
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        cur.execute(f"SELECT * FROM drophunter.{table}")
-        rows = cur.fetchall()
-    result = []
-    for row in rows:
-        d = {}
-        for k, v in row.items():
-            if isinstance(v, datetime):
-                d[k] = v.isoformat()
-            elif isinstance(v, Decimal):
-                d[k] = float(v)
-            else:
-                d[k] = v
-        result.append(d)
-    return result
+        cur.execute(f"SELECT * FROM {schema}.{table}")
+        return [_serialize(row) for row in cur.fetchall()]
 
 
 def _upsert_batch(client, table: str, rows: list, conflict: str) -> int:
@@ -75,8 +80,22 @@ def _upsert_batch(client, table: str, rows: list, conflict: str) -> int:
     return total
 
 
+def _backup_section(client, conn, label: str, schema: str, tables: list) -> int:
+    log.info("-- %s --", label)
+    total = 0
+    for table, conflict in tables:
+        rows = _fetch_local(conn, schema, table)
+        if not rows:
+            log.info("  %s: 0 rows, skipping", table)
+            continue
+        count = _upsert_batch(client, table, rows, conflict)
+        log.info("  %s: upserted %d rows", table, count)
+        total += count
+    return total
+
+
 def run_backup():
-    log.info("=== DropHunter Supabase backup started ===")
+    log.info("=== Supabase backup started ===")
     start = datetime.now(timezone.utc)
 
     client = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
@@ -84,14 +103,8 @@ def run_backup():
 
     total_rows = 0
     try:
-        for table, conflict in TABLES:
-            rows = _fetch_local(conn, table)
-            if not rows:
-                log.info("  %s: 0 rows, skipping", table)
-                continue
-            count = _upsert_batch(client, table, rows, conflict)
-            log.info("  %s: upserted %d rows", table, count)
-            total_rows += count
+        total_rows += _backup_section(client, conn, "DropHunter (drophunter schema)", "drophunter", DROPHUNTER_TABLES)
+        total_rows += _backup_section(client, conn, "Smart Reminder (public schema)", "public", PUBLIC_TABLES)
     finally:
         conn.close()
 
