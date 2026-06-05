@@ -12,6 +12,7 @@ Rows deleted locally are NOT deleted from Supabase (Supabase acts as a cold arch
 import logging
 import os
 from datetime import datetime, timezone
+from decimal import Decimal
 
 import psycopg2
 import psycopg2.extras
@@ -55,7 +56,12 @@ def _fetch_local(conn, table: str) -> list:
     for row in rows:
         d = {}
         for k, v in row.items():
-            d[k] = v.isoformat() if isinstance(v, datetime) else v
+            if isinstance(v, datetime):
+                d[k] = v.isoformat()
+            elif isinstance(v, Decimal):
+                d[k] = float(v)
+            else:
+                d[k] = v
         result.append(d)
     return result
 
