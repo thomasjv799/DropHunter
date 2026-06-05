@@ -12,7 +12,7 @@ A private, multi-user Discord bot that tracks game and watch prices and alerts y
 - **Custom price targets** — set a threshold (e.g. "alert me when Elden Ring drops below ₹500") instead of waiting for the all-time low
 - **Scheduled price sweeps** — every 12 hours, scheduled jobs check each tracked game and watch and DM the owning user AI-written commentary when a deal is found
 - **Multi-user & private** — DM-only; only the owner and users they permit (`/allow`) can use the bot. Each user's watchlist, history, and alerts are isolated by their Discord ID
-- **Conversational memory** — the bot remembers your conversation across sessions using Supabase-backed chat history and rolling summarization (per user)
+- **Conversational memory** — the bot remembers your conversation across sessions using Postgres-backed chat history and rolling summarization (per user)
 - **Multi-step reasoning** — powered by LangGraph, the bot can call multiple tools in sequence to answer complex questions
 
 ---
@@ -27,21 +27,23 @@ Discord DM (authorized users only — owner + allowlist)
       │
       ▼
  ai/graph.py            LangGraph StateGraph
-  ├── load_memory       fetch this user's chat history + summary from Supabase
+  ├── load_memory       fetch this user's chat history + summary from local Postgres
   ├── agent             Groq (Llama-3.3-70b) with tool calling, Gemini fallback
   ├── execute_tools     dispatch bot functions, injecting the caller's user_id
   └── save_memory       persist turn, rolling summarization via Gemini
       │
       ▼
- cron/price_check.py    scheduled sweep — games on GitHub-hosted Actions, watches on a self-hosted runner
+ cron/price_check.py    scheduled sweep — every 12h via self-hosted GitHub Actions runner
       │  each row carries user_id
       ▼
  utils/discord.py       send_dm — per-user DM with Groq AI commentary
+
+ cron/supabase_backup.py  every 3 days — upserts drophunter schema to Supabase (cold archive)
 ```
 
 **AI layer:** `GroqProvider` (primary) + `GeminiProvider` (fallback). Both implement the `AIProvider` ABC. The `_FallbackProvider` wrapper auto-switches on failure.
 
-**Database:** Supabase (PostgreSQL) — game tables (`games`, `price_history`, `notifications_log`), watch tables (`watches`, `watch_price_history`, `watch_notifications_log`), chat memory (`chat_messages`, `chat_summary`), and the access allowlist (`allowed_users`). `games`/`watches` carry a `user_id` owner column (composite-unique per user), so every query is scoped to the caller.
+**Database:** Local homelab Postgres (`homelab` DB, `drophunter` schema) via psycopg2 — game tables (`games`, `price_history`, `notifications_log`), watch tables (`watches`, `watch_price_history`, `watch_notifications_log`), chat memory (`chat_messages`, `chat_summary`), and the access allowlist (`allowed_users`). `games`/`watches` carry a `user_id` owner column (composite-unique per user), so every query is scoped to the caller. Supabase is a cold backup only, synced every 3 days.
 
 **Observability:** Full end-to-end tracing via [Langfuse](https://langfuse.com/) — every conversation produces a trace with child spans per graph node, LLM generations with token counts, and per-tool spans.
 
@@ -92,10 +94,11 @@ Unauthorized DMs get a polite "not authorized" reply and are never processed (no
 | Agent framework | LangGraph |
 | Game prices | IsThereAnyDeal API v3 (IN region, INR) |
 | Watch prices | Swiss Time House product pages (`cloudscraper` + BeautifulSoup, `schema.org` JSON-LD) |
-| Database | Supabase (PostgreSQL) |
+| Database | Local homelab Postgres (`drophunter` schema, psycopg2) |
+| Backup | Supabase — cold archive, synced every 3 days |
 | Observability | Langfuse v3 |
 | Hosting | Self-hosted Mac mini (Ubuntu, Docker) on home LAN |
-| Scheduling | GitHub Actions — game sweep (hosted runner) + watch sweep (self-hosted runner on the Mac mini) |
+| Scheduling | GitHub Actions — all workflows on self-hosted runner |
 | Retry logic | tenacity (exponential backoff) |
 | Tests | pytest + pytest-mock |
 
@@ -104,14 +107,20 @@ Unauthorized DMs get a polite "not authorized" reply and are never processed (no
 ## Project structure
 
 ```
-ai/           AIProvider ABC, GroqProvider, GeminiProvider, LangGraph graph
-bot/          Discord client, tool function definitions
-cron/         Price sweep (run via GitHub Actions; --games / --watches)
-db/           Supabase client, schema.sql
-utils/        ITAD API helpers, Swiss Time House watch fetcher, Discord webhook sender
-tests/        Pytest unit tests
-main.py       Entrypoint — starts bot + health check HTTP server
-Dockerfile    Python 3.11-slim image
+ai/                      AIProvider ABC, GroqProvider, GeminiProvider, LangGraph graph
+bot/                     Discord client, tool function definitions
+cron/
+  price_check.py         Price sweep (--games / --watches) — runs via GitHub Actions every 12h
+  supabase_backup.py     Cold backup — upserts drophunter schema to Supabase every 3 days
+db/
+  client.py              psycopg2 client (drophunter schema)
+  migrations/
+    001_drophunter_schema.sql  Schema DDL — run once on a fresh DB
+  migrate_from_supabase.py     One-time migration script used during Phase 2 cutover
+utils/                   ITAD API helpers, Swiss Time House watch fetcher, Discord webhook sender
+tests/                   Pytest unit tests
+main.py                  Entrypoint — starts bot + health check HTTP server
+Dockerfile               Python 3.11-slim image
 ```
 
 ---
@@ -139,8 +148,9 @@ ruff format .
 **Required environment variables:**
 
 ```
-SUPABASE_URL=
-SUPABASE_KEY=
+LOCAL_DB_URL=               # postgresql://user:pass@localhost:5432/homelab
+SUPABASE_URL=               # backup only
+SUPABASE_KEY=               # backup only
 ITAD_API_KEY=
 GROQ_API_KEY=
 GEMINI_API_KEY=
@@ -162,22 +172,29 @@ The bot runs on a **self-hosted Mac mini (Ubuntu)** as a Docker container, start
 
 ```bash
 docker build -t drophunter .
-docker run -d --name drophunter --restart unless-stopped --env-file .env -p 8080:8080 drophunter
+docker run -d --name drophunter --restart unless-stopped --env-file .env --network host drophunter
 ```
 
-Price sweeps run on a 12-hour schedule via **two GitHub Actions workflows**, split because Swiss Time House sits behind Cloudflare, which blocks GitHub's datacenter IP ranges:
+`--network host` is required so the container can reach local Postgres on port 5432.
 
-- **Game Price Check** (`.github/workflows/price_check.yml`) — GitHub-hosted runner, runs `python -m cron.price_check --games` (ITAD works fine from datacenter IPs).
-- **Watch Price Check** (`.github/workflows/watch_check.yml`) — **self-hosted runner on the Mac mini** (residential IP, so `cloudscraper` passes Cloudflare), runs `python -m cron.price_check --watches`.
+### GitHub Actions workflows
 
-Run a sweep manually with `python -m cron.price_check` (both), or pass `--games` / `--watches` for a single type.
+All three workflows run on the **self-hosted runner** (needs local Postgres + residential IP for Cloudflare bypass):
 
-### Database
+| Workflow | Schedule | Command |
+|---|---|---|
+| Game Price Check | Every 12h at :00 | `python -m cron.price_check --games` |
+| Watch Price Check | Every 12h at :30 | `python -m cron.price_check --watches` |
+| Supabase Backup | Every 3 days at 03:00 | `python -m cron.supabase_backup` |
 
-`db/schema.sql` is the authoritative schema and is idempotent (`IF NOT EXISTS` throughout). To bootstrap a fresh database — e.g. when moving from Supabase to a self-hosted PostgreSQL — create the database, point `SUPABASE_URL`/`SUPABASE_KEY` (or a future `DATABASE_URL`) at it, and run:
+All support `workflow_dispatch` for manual runs from the GitHub Actions UI.
+
+**GitHub secrets required:** `LOCAL_DB_URL`, `ITAD_API_KEY`, `DISCORD_WEBHOOK_URL`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `AI_PROVIDER`, `SUPABASE_URL`, `SUPABASE_KEY`
+
+### Database setup (fresh install)
 
 ```bash
-psql "$DATABASE_URL" -f db/schema.sql
+# Create schema and tables
+docker exec homelab-postgres psql -U homelab -d homelab \
+  -f db/migrations/001_drophunter_schema.sql
 ```
-
-This creates all tables with the per-user `user_id` columns and composite uniqueness already in place, so **no data migration is needed on a fresh DB**. The one-time `ALTER TABLE` backfill documented in `docs/superpowers/plans/2026-05-31-multi-user-support.md` was only for the existing Supabase rows that predated multi-user.
