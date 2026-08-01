@@ -1,4 +1,4 @@
-# DropHunter
+# DropHunter 
 
 A private, multi-user Discord bot that tracks game and watch prices and alerts you when deals hit. You talk to it in plain English over DM; the owner permits who can use it, and every person's watchlist and alerts are isolated.
 <img width="2442" height="1423" alt="image" src="https://github.com/user-attachments/assets/023ac522-b964-4e54-9fda-0fc24faded6f" />
