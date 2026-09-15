@@ -1,5 +1,14 @@
-from unittest.mock import MagicMock, patch
-from ai.graph import load_memory, agent, execute_tools, save_memory, route_after_agent, route_after_tools, GraphState
+from unittest.mock import MagicMock
+
+from ai.graph import (
+    GraphState,
+    agent,
+    execute_tools,
+    load_memory,
+    route_after_agent,
+    route_after_tools,
+    save_memory,
+)
 
 
 def _base_state(**overrides) -> GraphState:
@@ -17,6 +26,7 @@ def _base_state(**overrides) -> GraphState:
 
 # --- load_memory ---
 
+
 def test_load_memory_injects_system_prompt(mocker):
     mocker.patch("ai.graph.get_chat_context", return_value={"summary": None, "messages": []})
     result = load_memory(_base_state())
@@ -25,25 +35,35 @@ def test_load_memory_injects_system_prompt(mocker):
 
 
 def test_load_memory_injects_summary_into_system(mocker):
-    mocker.patch("ai.graph.get_chat_context", return_value={
-        "summary": "User tracks Hades.",
-        "messages": [],
-    })
+    mocker.patch(
+        "ai.graph.get_chat_context",
+        return_value={
+            "summary": "User tracks Hades.",
+            "messages": [],
+        },
+    )
     result = load_memory(_base_state())
     assert "User tracks Hades." in result["messages"][0]["content"]
 
 
 def test_load_memory_prepends_history_messages(mocker):
-    mocker.patch("ai.graph.get_chat_context", return_value={
-        "summary": None,
-        "messages": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}],
-    })
+    mocker.patch(
+        "ai.graph.get_chat_context",
+        return_value={
+            "summary": None,
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "hello"},
+            ],
+        },
+    )
     result = load_memory(_base_state())
     # system + 2 history + 1 current = 4
     assert len(result["messages"]) == 4
 
 
 # --- agent ---
+
 
 def test_agent_returns_final_reply_on_text(mocker):
     mock_provider = MagicMock()
@@ -67,6 +87,7 @@ def test_agent_returns_tool_calls(mocker):
 
 # --- execute_tools ---
 
+
 def test_execute_tools_dispatches_and_appends_results(mocker):
     mocker.patch("ai.graph.dispatch", return_value="Game list: Hades")
     state = _base_state(pending_tool_calls=[{"name": "list_games", "arguments": {}}])
@@ -76,7 +97,9 @@ def test_execute_tools_dispatches_and_appends_results(mocker):
 
 
 def test_execute_tools_stops_at_max_iterations(mocker):
-    state = _base_state(tool_iteration=7, pending_tool_calls=[{"name": "list_games", "arguments": {}}])
+    state = _base_state(
+        tool_iteration=7, pending_tool_calls=[{"name": "list_games", "arguments": {}}]
+    )
     result = execute_tools(state)
     assert "wasn't able to complete" in result["final_reply"]
 
@@ -89,6 +112,7 @@ def test_execute_tools_handles_tool_error(mocker):
 
 
 # --- save_memory ---
+
 
 def test_save_memory_calls_save_turn(mocker):
     mock_save = mocker.patch("ai.graph.save_turn")
@@ -107,8 +131,11 @@ def test_save_memory_does_not_raise_on_failure(mocker):
 
 # --- routing ---
 
+
 def test_route_after_agent_goes_to_tools_when_pending(mocker):
-    state = _base_state(pending_tool_calls=[{"name": "list_games", "arguments": {}}], final_reply="")
+    state = _base_state(
+        pending_tool_calls=[{"name": "list_games", "arguments": {}}], final_reply=""
+    )
     assert route_after_agent(state) == "execute_tools"
 
 
@@ -129,6 +156,7 @@ def test_route_after_tools_goes_to_save_when_reply(mocker):
 
 def test_run_tool_forwards_user_id(mocker):
     from ai import graph
+
     mock_dispatch = mocker.patch("ai.graph.dispatch", return_value="ok")
     graph._run_tool("list_games", {}, "userA")
     mock_dispatch.assert_called_once_with("list_games", {}, "userA")

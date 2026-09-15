@@ -1,8 +1,8 @@
 # tests/test_providers.py
 from unittest.mock import MagicMock
 
-
 # ── GroqProvider ────────────────────────────────────────────────────────────
+
 
 def _make_groq_response(content=None, tool_calls=None, prompt_tokens=10, completion_tokens=20):
     """Build a mock Groq chat completion response."""
@@ -22,15 +22,14 @@ def _groq_provider(mocker, response):
     mock_client.chat.completions.create.return_value = response
     mocker.patch("groq.Groq", return_value=mock_client)
     from ai.groq_provider import GroqProvider
+
     return GroqProvider()
 
 
 def test_groq_chat_with_tools_text_response_has_usage(mocker):
     response = _make_groq_response(content="Hello!", tool_calls=None)
     provider = _groq_provider(mocker, response)
-    result = provider.chat_with_tools(
-        messages=[{"role": "user", "content": "hi"}], tools=[]
-    )
+    result = provider.chat_with_tools(messages=[{"role": "user", "content": "hi"}], tools=[])
     assert "text" in result
     assert result["usage"] == {"input_tokens": 10, "output_tokens": 20}
 
@@ -42,15 +41,19 @@ def test_groq_chat_with_tools_tool_call_response_has_usage(mocker):
     response = _make_groq_response(tool_calls=[mock_tc], prompt_tokens=15, completion_tokens=5)
     provider = _groq_provider(mocker, response)
 
-    tools = [{"type": "function", "function": {"name": "list_games", "description": "...", "parameters": {}}}]
-    result = provider.chat_with_tools(
-        messages=[{"role": "user", "content": "list"}], tools=tools
-    )
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "list_games", "description": "...", "parameters": {}},
+        }
+    ]
+    result = provider.chat_with_tools(messages=[{"role": "user", "content": "list"}], tools=tools)
     assert "tool_calls" in result
     assert result["usage"] == {"input_tokens": 15, "output_tokens": 5}
 
 
 # ── GeminiProvider ───────────────────────────────────────────────────────────
+
 
 def _make_gemini_chat_response(text=None, tool_name=None, prompt_tokens=8, candidate_tokens=12):
     """Build a mock Gemini chat response."""
@@ -81,25 +84,31 @@ def _gemini_provider(mocker, chat_response):
     mock_model.start_chat.return_value = mock_chat
     mocker.patch("google.generativeai.GenerativeModel", return_value=mock_model)
     from ai.gemini_provider import GeminiProvider
+
     return GeminiProvider()
 
 
 def test_gemini_chat_with_tools_text_response_has_usage(mocker):
-    response = _make_gemini_chat_response(text="Here's the list.", prompt_tokens=8, candidate_tokens=12)
-    provider = _gemini_provider(mocker, response)
-    result = provider.chat_with_tools(
-        messages=[{"role": "user", "content": "hi"}], tools=[]
+    response = _make_gemini_chat_response(
+        text="Here's the list.", prompt_tokens=8, candidate_tokens=12
     )
+    provider = _gemini_provider(mocker, response)
+    result = provider.chat_with_tools(messages=[{"role": "user", "content": "hi"}], tools=[])
     assert "text" in result
     assert result["usage"] == {"input_tokens": 8, "output_tokens": 12}
 
 
 def test_gemini_chat_with_tools_tool_call_response_has_usage(mocker):
-    response = _make_gemini_chat_response(tool_name="list_games", prompt_tokens=5, candidate_tokens=3)
-    provider = _gemini_provider(mocker, response)
-    tools = [{"type": "function", "function": {"name": "list_games", "description": "...", "parameters": {}}}]
-    result = provider.chat_with_tools(
-        messages=[{"role": "user", "content": "list"}], tools=tools
+    response = _make_gemini_chat_response(
+        tool_name="list_games", prompt_tokens=5, candidate_tokens=3
     )
+    provider = _gemini_provider(mocker, response)
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "list_games", "description": "...", "parameters": {}},
+        }
+    ]
+    result = provider.chat_with_tools(messages=[{"role": "user", "content": "list"}], tools=tools)
     assert "tool_calls" in result
     assert result["usage"] == {"input_tokens": 5, "output_tokens": 3}

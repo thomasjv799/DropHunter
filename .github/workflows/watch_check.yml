@@ -2,28 +2,49 @@ name: Watch Price Check
 
 on:
   schedule:
-    - cron: "30 */12 * * *"   # every 12h, offset 30 min from the game sweep
+    - cron: "30 */12 * * *"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: drophunter-watch-sweep
+  cancel-in-progress: false
 
 jobs:
   check-watches:
-    runs-on: self-hosted      # residential IP (Cloudflare bypass) + local Postgres access
-
+    # Opt in only after the residential runner is available again.
+    if: vars.WATCH_CHECK_ENABLED == 'true'
+    runs-on: ${{ vars.WATCH_RUNNER || 'self-hosted' }}
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      LOCAL_DB_URL: ${{ secrets.LOCAL_DB_URL }}
+      DB_SCHEMA: ${{ vars.DB_SCHEMA || 'public' }}
+      ITAD_API_KEY: ${{ secrets.ITAD_API_KEY }}
+      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+      OWNER_ID: ${{ secrets.OWNER_ID }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      AI_PROVIDER: ${{ vars.AI_PROVIDER || secrets.AI_PROVIDER || 'groq' }}
+      OMNIROUTE_BASE_URL: ${{ vars.OMNIROUTE_BASE_URL }}
+      OMNIROUTE_MODEL: ${{ vars.OMNIROUTE_MODEL }}
+      OMNIROUTE_API_KEY: ${{ secrets.OMNIROUTE_API_KEY }}
+      OMNIROUTE_TIMEOUT_SECONDS: ${{ vars.OMNIROUTE_TIMEOUT_SECONDS || '60' }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      LANGFUSE_TRACING_ENABLED: "false"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up venv and install dependencies
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
         run: |
-          python3 -m venv .venv
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -r requirements.txt
-
+          python -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+      - name: Verify configuration and database
+        run: .venv/bin/python -m cron.preflight
       - name: Run watch sweep
-        env:
-          LOCAL_DB_URL: ${{ secrets.LOCAL_DB_URL }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          AI_PROVIDER: ${{ secrets.AI_PROVIDER }}
         run: .venv/bin/python -m cron.price_check --watches

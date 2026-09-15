@@ -18,9 +18,16 @@ def _ensure_conn():
     global _conn
     if _conn is None or _conn.closed:
         load_dotenv()
-        dsn = os.environ["LOCAL_DB_URL"]
-        logger.info("Connecting to local Postgres")
-        _conn = psycopg2.connect(dsn)
+        dsn = os.environ.get("DATABASE_URL") or os.environ.get("LOCAL_DB_URL")
+        if not dsn:
+            raise EnvironmentError("Set DATABASE_URL (cloud) or LOCAL_DB_URL (home server).")
+        schema = os.environ.get("DB_SCHEMA") or "drophunter"
+        if schema not in {"public", "drophunter"}:
+            raise ValueError("DB_SCHEMA must be 'public' or 'drophunter'.")
+        logger.info("Connecting to Postgres (schema=%s)", schema)
+        _conn = psycopg2.connect(
+            dsn, connect_timeout=15, options=f"-c search_path=pg_catalog,{schema}"
+        )
         _conn.autocommit = True
         logger.info("Postgres connection established")
     return _conn
@@ -58,11 +65,11 @@ def get_games(user_id: Optional[str] = None) -> list:
     with _cursor() as cur:
         if user_id is not None:
             cur.execute(
-                "SELECT * FROM drophunter.games WHERE user_id = %s ORDER BY added_at",
+                "SELECT * FROM games WHERE user_id = %s ORDER BY added_at",
                 (user_id,),
             )
         else:
-            cur.execute("SELECT * FROM drophunter.games ORDER BY added_at")
+            cur.execute("SELECT * FROM games ORDER BY added_at")
         rows = _rows(cur.fetchall())
     logger.debug("Fetched %d game(s) for user_id=%s", len(rows), user_id)
     return rows
@@ -73,7 +80,7 @@ def add_game(user_id: str, title: str, itad_id: str, target_price: Optional[floa
     with _cursor() as cur:
         cur.execute(
             """
-            INSERT INTO drophunter.games (user_id, title, itad_id, target_price)
+            INSERT INTO games (user_id, title, itad_id, target_price)
             VALUES (%s, %s, %s, %s)
             ON CONFLICT (user_id, itad_id) DO UPDATE
                 SET title = EXCLUDED.title, target_price = EXCLUDED.target_price
@@ -110,7 +117,7 @@ def set_target_price(user_id: str, title: str, target_price: Optional[float]) ->
         return False
     with _cursor() as cur:
         cur.execute(
-            "UPDATE drophunter.games SET target_price = %s WHERE id = %s",
+            "UPDATE games SET target_price = %s WHERE id = %s",
             (target_price, game["id"]),
         )
         return cur.rowcount > 0
@@ -122,7 +129,7 @@ def remove_game(user_id: str, title: str) -> bool:
         logger.warning("No game matched '%s' for removal", title)
         return False
     with _cursor() as cur:
-        cur.execute("DELETE FROM drophunter.games WHERE id = %s", (game["id"],))
+        cur.execute("DELETE FROM games WHERE id = %s", (game["id"],))
         return cur.rowcount > 0
 
 
@@ -131,7 +138,7 @@ def insert_price_history(game_id: str, price: float, regular_price: float, store
     with _cursor() as cur:
         cur.execute(
             """
-            INSERT INTO drophunter.price_history (game_id, price, regular_price, store)
+            INSERT INTO price_history (game_id, price, regular_price, store)
             VALUES (%s, %s, %s, %s)
             RETURNING *
             """,
@@ -144,7 +151,7 @@ def get_last_notified_price(game_id: str) -> Optional[float]:
     with _cursor() as cur:
         cur.execute(
             """
-            SELECT price FROM drophunter.notifications_log
+            SELECT price FROM notifications_log
             WHERE game_id = %s
             ORDER BY notified_at DESC
             LIMIT 1
@@ -163,7 +170,7 @@ def log_notification(game_id: str, price: float) -> dict:
     logger.info("Logging notification: game_id=%s price=%.2f", game_id, price)
     with _cursor() as cur:
         cur.execute(
-            "INSERT INTO drophunter.notifications_log (game_id, price) VALUES (%s, %s) RETURNING *",
+            "INSERT INTO notifications_log (game_id, price) VALUES (%s, %s) RETURNING *",
             (game_id, price),
         )
         return _row(cur.fetchone())
@@ -175,8 +182,8 @@ def get_recent_deals(user_id: str, limit: int = 5) -> list:
             """
             SELECT nl.id, nl.game_id, nl.price, nl.notified_at,
                    g.title AS game_title, g.user_id AS game_user_id
-            FROM drophunter.notifications_log nl
-            JOIN drophunter.games g ON nl.game_id = g.id
+            FROM notifications_log nl
+            JOIN games g ON nl.game_id = g.id
             WHERE g.user_id = %s
             ORDER BY nl.notified_at DESC
             LIMIT %s
@@ -196,7 +203,7 @@ def get_historical_low(game_id: str) -> Optional[float]:
     with _cursor() as cur:
         cur.execute(
             """
-            SELECT price FROM drophunter.price_history
+            SELECT price FROM price_history
             WHERE game_id = %s
             ORDER BY price ASC
             LIMIT 1
@@ -214,7 +221,7 @@ def was_recently_notified(game_id: str, hours: int = 6) -> bool:
     with _cursor() as cur:
         cur.execute(
             """
-            SELECT id FROM drophunter.notifications_log
+            SELECT id FROM notifications_log
             WHERE game_id = %s AND notified_at >= %s
             LIMIT 1
             """,
@@ -231,7 +238,7 @@ def get_chat_context(user_id: str) -> dict:
     try:
         with _cursor() as cur:
             cur.execute(
-                "SELECT summary FROM drophunter.chat_summary WHERE user_id = %s",
+                "SELECT summary FROM chat_summary WHERE user_id = %s",
                 (user_id,),
             )
             summary_row = cur.fetchone()
@@ -239,7 +246,7 @@ def get_chat_context(user_id: str) -> dict:
 
             cur.execute(
                 """
-                SELECT role, content FROM drophunter.chat_messages
+                SELECT role, content FROM chat_messages
                 WHERE user_id = %s
                 ORDER BY created_at DESC
                 LIMIT 5
@@ -257,7 +264,7 @@ def save_turn(user_id: str, user_message: str, assistant_message: str) -> None:
     with _cursor() as cur:
         cur.execute(
             """
-            INSERT INTO drophunter.chat_messages (user_id, role, content) VALUES
+            INSERT INTO chat_messages (user_id, role, content) VALUES
             (%s, 'user', %s),
             (%s, 'assistant', %s)
             """,
@@ -268,7 +275,7 @@ def save_turn(user_id: str, user_message: str, assistant_message: str) -> None:
 def get_message_count(user_id: str) -> int:
     with _cursor() as cur:
         cur.execute(
-            "SELECT COUNT(*) AS cnt FROM drophunter.chat_messages WHERE user_id = %s",
+            "SELECT COUNT(*) AS cnt FROM chat_messages WHERE user_id = %s",
             (user_id,),
         )
         return cur.fetchone()["cnt"]
@@ -281,7 +288,7 @@ def summarize_if_needed(user_id: str, gemini_provider) -> None:
     with _cursor() as cur:
         cur.execute(
             """
-            SELECT id, role, content FROM drophunter.chat_messages
+            SELECT id, role, content FROM chat_messages
             WHERE user_id = %s
             ORDER BY created_at ASC
             LIMIT 15
@@ -295,7 +302,7 @@ def summarize_if_needed(user_id: str, gemini_provider) -> None:
 
     with _cursor() as cur:
         cur.execute(
-            "SELECT summary FROM drophunter.chat_summary WHERE user_id = %s",
+            "SELECT summary FROM chat_summary WHERE user_id = %s",
             (user_id,),
         )
         row = cur.fetchone()
@@ -304,8 +311,10 @@ def summarize_if_needed(user_id: str, gemini_provider) -> None:
     messages_text = "\n".join(f"{m['role']}: {m['content']}" for m in oldest)
     prompt = (
         "You are a memory manager for a Discord game deal assistant called DropHunter.\n"
-        "Summarize the following conversation messages into a concise paragraph (max 150 words).\n"
-        "Focus on: games the user is tracking, price targets they have set, deals they were notified about,\n"
+        "Summarize the following conversation messages "
+        "into a concise paragraph (max 150 words).\n"
+        "Focus on: games the user is tracking, price targets they have set, "
+        "deals they were notified about,\n"
         "and any preferences they have expressed. Merge with the existing summary if provided.\n\n"
         f"Existing summary: {existing_summary}\n\n"
         f"Messages to summarize:\n{messages_text}"
@@ -316,15 +325,16 @@ def summarize_if_needed(user_id: str, gemini_provider) -> None:
     with _cursor() as cur:
         cur.execute(
             """
-            INSERT INTO drophunter.chat_summary (user_id, summary, updated_at)
+            INSERT INTO chat_summary (user_id, summary, updated_at)
             VALUES (%s, %s, %s)
-            ON CONFLICT (user_id) DO UPDATE SET summary = EXCLUDED.summary, updated_at = EXCLUDED.updated_at
+            ON CONFLICT (user_id) DO UPDATE
+                SET summary = EXCLUDED.summary, updated_at = EXCLUDED.updated_at
             """,
             (user_id, new_summary, datetime.now(timezone.utc)),
         )
         ids_to_delete = [m["id"] for m in oldest]
         cur.execute(
-            "DELETE FROM drophunter.chat_messages WHERE id = ANY(%s)",
+            "DELETE FROM chat_messages WHERE id = ANY(%s)",
             (ids_to_delete,),
         )
     logger.info("Summarized %d messages for user %s", len(ids_to_delete), user_id)
@@ -334,7 +344,7 @@ def force_summarize(user_id: str, gemini_provider) -> str:
     with _cursor() as cur:
         cur.execute(
             """
-            SELECT id, role, content FROM drophunter.chat_messages
+            SELECT id, role, content FROM chat_messages
             WHERE user_id = %s
             ORDER BY created_at ASC
             """,
@@ -347,7 +357,7 @@ def force_summarize(user_id: str, gemini_provider) -> str:
 
     with _cursor() as cur:
         cur.execute(
-            "SELECT summary FROM drophunter.chat_summary WHERE user_id = %s",
+            "SELECT summary FROM chat_summary WHERE user_id = %s",
             (user_id,),
         )
         row = cur.fetchone()
@@ -361,7 +371,8 @@ def force_summarize(user_id: str, gemini_provider) -> str:
         "- Games the user is currently tracking (with their exact titles)\n"
         "- Target prices they have set\n"
         "- Any preferences they expressed\n"
-        "Do NOT include any hallucinated or assumed information. Only include facts from the messages.\n"
+        "Do NOT include any hallucinated or assumed information. "
+        "Only include facts from the messages.\n"
         "Merge with the existing summary if provided.\n\n"
         f"Existing summary: {existing_summary}\n\n"
         f"Messages to summarize:\n{messages_text}"
@@ -372,15 +383,16 @@ def force_summarize(user_id: str, gemini_provider) -> str:
     with _cursor() as cur:
         cur.execute(
             """
-            INSERT INTO drophunter.chat_summary (user_id, summary, updated_at)
+            INSERT INTO chat_summary (user_id, summary, updated_at)
             VALUES (%s, %s, %s)
-            ON CONFLICT (user_id) DO UPDATE SET summary = EXCLUDED.summary, updated_at = EXCLUDED.updated_at
+            ON CONFLICT (user_id) DO UPDATE
+                SET summary = EXCLUDED.summary, updated_at = EXCLUDED.updated_at
             """,
             (user_id, new_summary, datetime.now(timezone.utc)),
         )
         ids_to_delete = [m["id"] for m in all_messages]
         cur.execute(
-            "DELETE FROM drophunter.chat_messages WHERE id = ANY(%s)",
+            "DELETE FROM chat_messages WHERE id = ANY(%s)",
             (ids_to_delete,),
         )
     logger.info("Force-summarized %d messages for user %s", len(ids_to_delete), user_id)
@@ -389,8 +401,8 @@ def force_summarize(user_id: str, gemini_provider) -> str:
 
 def clear_memory(user_id: str) -> None:
     with _cursor() as cur:
-        cur.execute("DELETE FROM drophunter.chat_messages WHERE user_id = %s", (user_id,))
-        cur.execute("DELETE FROM drophunter.chat_summary WHERE user_id = %s", (user_id,))
+        cur.execute("DELETE FROM chat_messages WHERE user_id = %s", (user_id,))
+        cur.execute("DELETE FROM chat_summary WHERE user_id = %s", (user_id,))
     logger.info("Cleared all memory for user %s", user_id)
 
 
@@ -402,11 +414,11 @@ def get_watches(user_id: Optional[str] = None) -> list:
     with _cursor() as cur:
         if user_id is not None:
             cur.execute(
-                "SELECT * FROM drophunter.watches WHERE user_id = %s ORDER BY added_at",
+                "SELECT * FROM watches WHERE user_id = %s ORDER BY added_at",
                 (user_id,),
             )
         else:
-            cur.execute("SELECT * FROM drophunter.watches ORDER BY added_at")
+            cur.execute("SELECT * FROM watches ORDER BY added_at")
         return _rows(cur.fetchall())
 
 
@@ -422,7 +434,7 @@ def add_watch(
     with _cursor() as cur:
         cur.execute(
             """
-            INSERT INTO drophunter.watches
+            INSERT INTO watches
                 (user_id, name, brand, reference_no, target_price, swisstimehouse_url)
             VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (user_id, swisstimehouse_url) DO UPDATE SET
@@ -450,7 +462,7 @@ def set_watch_target(user_id: str, name: str, target_price: float) -> bool:
         return False
     with _cursor() as cur:
         cur.execute(
-            "UPDATE drophunter.watches SET target_price = %s WHERE id = %s",
+            "UPDATE watches SET target_price = %s WHERE id = %s",
             (target_price, watch["id"]),
         )
         return cur.rowcount > 0
@@ -461,7 +473,7 @@ def remove_watch(user_id: str, name: str) -> bool:
     if not watch:
         return False
     with _cursor() as cur:
-        cur.execute("DELETE FROM drophunter.watches WHERE id = %s", (watch["id"],))
+        cur.execute("DELETE FROM watches WHERE id = %s", (watch["id"],))
     logger.info("Watch removed: %s", watch["name"])
     return True
 
@@ -474,7 +486,7 @@ def insert_watch_price_history(
     with _cursor() as cur:
         cur.execute(
             """
-            INSERT INTO drophunter.watch_price_history
+            INSERT INTO watch_price_history
                 (watch_id, swisstimehouse_price, myntra_price)
             VALUES (%s, %s, %s)
             RETURNING *
@@ -488,7 +500,7 @@ def get_last_watch_notified_price(watch_id: str) -> Optional[float]:
     with _cursor() as cur:
         cur.execute(
             """
-            SELECT price FROM drophunter.watch_notifications_log
+            SELECT price FROM watch_notifications_log
             WHERE watch_id = %s
             ORDER BY notified_at DESC
             LIMIT 1
@@ -509,7 +521,7 @@ def log_watch_notification(watch_id: str, price: float, seller: str) -> dict:
     with _cursor() as cur:
         cur.execute(
             """
-            INSERT INTO drophunter.watch_notifications_log (watch_id, price, seller)
+            INSERT INTO watch_notifications_log (watch_id, price, seller)
             VALUES (%s, %s, %s)
             RETURNING *
             """,
@@ -532,7 +544,7 @@ def is_user_allowed(user_id: str) -> bool:
         return True
     with _cursor() as cur:
         cur.execute(
-            "SELECT user_id FROM drophunter.allowed_users WHERE user_id = %s",
+            "SELECT user_id FROM allowed_users WHERE user_id = %s",
             (user_id,),
         )
         return cur.fetchone() is not None
@@ -543,7 +555,7 @@ def add_allowed_user(user_id: str, added_by: str) -> dict:
     with _cursor() as cur:
         cur.execute(
             """
-            INSERT INTO drophunter.allowed_users (user_id, added_by)
+            INSERT INTO allowed_users (user_id, added_by)
             VALUES (%s, %s)
             ON CONFLICT (user_id) DO UPDATE SET added_by = EXCLUDED.added_by
             RETURNING *
@@ -557,7 +569,7 @@ def remove_allowed_user(user_id: str) -> bool:
     logger.info("Revoking user %s", user_id)
     with _cursor() as cur:
         cur.execute(
-            "DELETE FROM drophunter.allowed_users WHERE user_id = %s",
+            "DELETE FROM allowed_users WHERE user_id = %s",
             (user_id,),
         )
         return cur.rowcount > 0
@@ -565,5 +577,46 @@ def remove_allowed_user(user_id: str) -> bool:
 
 def list_allowed_users() -> list:
     with _cursor() as cur:
-        cur.execute("SELECT * FROM drophunter.allowed_users")
+        cur.execute("SELECT * FROM allowed_users")
         return _rows(cur.fetchall())
+
+
+def get_user_email(user_id: str) -> Optional[str]:
+    with _cursor() as cur:
+        cur.execute("SELECT email FROM allowed_users WHERE user_id = %s", (user_id,))
+        row = cur.fetchone()
+        return row["email"] if row else None
+
+
+def set_user_email(user_id: str, address: str) -> bool:
+    from utils.email import validate_email
+
+    if not is_user_allowed(user_id):
+        raise PermissionError("User is not authorized.")
+    address = validate_email(address)
+    with _cursor() as cur:
+        if user_id == _owner_id():
+            cur.execute(
+                """INSERT INTO allowed_users (user_id, email) VALUES (%s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET email = EXCLUDED.email""",
+                (user_id, address),
+            )
+            return True
+        # UPDATE cannot recreate an allowlist row after a concurrent revocation.
+        cur.execute(
+            "UPDATE allowed_users SET email = %s WHERE user_id = %s", (address, user_id)
+        )
+        return cur.rowcount > 0
+
+
+def log_job_run(
+    job_name: str, started_at: datetime, finished_at: datetime,
+    status: str, error_text: Optional[str], counts: dict,
+) -> None:
+    with _cursor() as cur:
+        cur.execute(
+            """INSERT INTO ops.job_runs
+            (job_name, started_at, finished_at, status, error_text, counts)
+            VALUES (%s, %s, %s, %s, %s, %s)""",
+            (job_name, started_at, finished_at, status, error_text, psycopg2.extras.Json(counts)),
+        )

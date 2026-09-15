@@ -27,6 +27,7 @@ class GroqProvider(AIProvider):
 
     def chat_with_tools(self, messages: list[dict], tools: list[dict]) -> dict:
         import re
+
         import groq
 
         try:
@@ -54,7 +55,10 @@ class GroqProvider(AIProvider):
 
                     try:
                         args = json.loads(args_str) if args_str else {}
-                        return {"tool_calls": [{"name": name, "arguments": args}], "usage": {"input_tokens": 0, "output_tokens": 0}}
+                        return {
+                            "tool_calls": [{"name": name, "arguments": args}],
+                            "usage": {"input_tokens": 0, "output_tokens": 0},
+                        }
                     except json.JSONDecodeError:
                         pass
             raise

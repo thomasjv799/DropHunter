@@ -5,8 +5,18 @@ on:
     - cron: "0 3 */3 * *"   # 03:00 every 3 days
   workflow_dispatch:          # allow manual trigger from GitHub UI
 
+permissions:
+  contents: read
+
+concurrency:
+  group: drophunter-supabase-backup
+  cancel-in-progress: false
+
 jobs:
   backup:
+    # A stale home-server backup must not overwrite the active cloud database.
+    if: vars.SUPABASE_BACKUP_ENABLED == 'true'
+    timeout-minutes: 30
     runs-on: self-hosted      # needs local Postgres access
 
     steps:
