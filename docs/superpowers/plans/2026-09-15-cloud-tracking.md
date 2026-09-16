@@ -22,20 +22,20 @@ delivery sits alongside Discord, with operational records for each sweep.
 
 ## Tasks
 
-- [ ] Database portability: in db/client.py prefer DATABASE_URL with LOCAL_DB_URL
+- [x] Database portability: in db/client.py prefer DATABASE_URL with LOCAL_DB_URL
   fallback, select DB_SCHEMA=public|drophunter, use a validated search path and
   connection timeout. Extend tests/test_db.py to catch wrong connection selection.
-- [ ] Optional email: create utils/email.py with send_email(to, subject, html,
+- [x] Optional email: create utils/email.py with send_email(to, subject, html,
   text=None) -> bool, validate addresses, isolate failures, and add tests/test_email.py.
   Add get_user_email/set_user_email with authorization, and /setemail in bot/client.py.
-- [ ] Operational logging: add an additive migration and ops.job_runs writer.
+- [x] Operational logging: add an additive migration and ops.job_runs writer.
   Update cron/price_check.py to count swept rows and delivered notifications,
   continue after item errors, and return nonzero for partial failures. Cover
   commentary fallback, failed delivery, skipped recipients and accurate counts.
-- [ ] OmniRoute: create ai/omniroute_provider.py; use explicit base URL, model,
+- [x] OmniRoute: create ai/omniroute_provider.py; use explicit base URL, model,
   API key and bounded timeout. Exercise text, tool calls, usage and malformed/HTTP
   errors in tests/test_omniroute.py before implementation; register in ai/__init__.py.
-- [ ] Deployment: update .github/workflows/price_check.yml to cloud default with
+- [x] Deployment: update .github/workflows/price_check.yml to cloud default with
   runner/schema overrides and correct secrets. Gate watch and backup schedules.
   Add CI and real PostgreSQL integration tests. Update .env.example and README.
 - [ ] Finish: run full tests and lint, inspect the final diff and migrations,

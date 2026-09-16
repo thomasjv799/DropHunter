@@ -149,9 +149,11 @@ schema; review its Data API grants and RLS before exposing it to clients.
 `DATABASE_URL` takes precedence over `LOCAL_DB_URL`. Use the Supabase **session
 pooler** connection string from the dashboard with `sslmode=require`; it supports
 GitHub's IPv4 runners. See [Supabase connection guidance](https://supabase.com/docs/guides/database/connecting-to-postgres).
-Use a trusted server database role; email and job-run tables have RLS and no public
-API policies. A separate reporting role requires explicit `USAGE` on `ops` and
-`SELECT` on `ops.job_runs`; the app's server role needs `INSERT` and `SELECT`.
+Use the trusted table-owner database role (Supabase `postgres`, or the home-server
+table owner). Email and job-run tables have RLS and no public API policies. A
+separate reporting role needs `USAGE` on `ops`, `SELECT` on `ops.job_runs`, and a
+role-specific SELECT policy. A non-owner app role also needs explicit grants and
+role-specific RLS policies; grants alone do not bypass RLS.
 
 ### 2. Configure GitHub Actions
 
