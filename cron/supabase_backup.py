@@ -103,8 +103,12 @@ def run_backup():
 
     total_rows = 0
     try:
-        total_rows += _backup_section(client, conn, "DropHunter (drophunter schema)", "drophunter", DROPHUNTER_TABLES)
-        total_rows += _backup_section(client, conn, "Smart Reminder (public schema)", "public", PUBLIC_TABLES)
+        total_rows += _backup_section(
+            client, conn, "DropHunter (drophunter schema)", "drophunter", DROPHUNTER_TABLES
+        )
+        total_rows += _backup_section(
+            client, conn, "Smart Reminder (public schema)", "public", PUBLIC_TABLES
+        )
     finally:
         conn.close()
 

@@ -52,6 +52,10 @@ def get_provider() -> AIProvider:
     load_dotenv()
     provider = os.environ.get("AI_PROVIDER", "groq").lower()
 
+    if provider == "omniroute":
+        from ai.omniroute_provider import OmniRouteProvider
+        return OmniRouteProvider()
+
     if provider == "gemini":
         from ai.gemini_provider import GeminiProvider
         return GeminiProvider()
@@ -64,4 +68,4 @@ def get_provider() -> AIProvider:
             return _FallbackProvider(primary=groq, fallback=GeminiProvider())
         return groq
 
-    raise ValueError(f"Unknown AI_PROVIDER: {provider!r}. Must be 'groq' or 'gemini'.")
+    raise ValueError(f"Unknown AI_PROVIDER: {provider!r}. Use groq, gemini or omniroute.")

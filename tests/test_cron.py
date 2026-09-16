@@ -4,6 +4,12 @@ from unittest.mock import MagicMock
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def optional_services(mocker):
+    mocker.patch("cron.price_check.get_user_email", return_value=None)
+    mocker.patch("cron.price_check.log_job_run")
+
+
 @pytest.fixture
 def sample_game():
     return {

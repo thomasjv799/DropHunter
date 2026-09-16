@@ -1,5 +1,7 @@
 import os
 
+os.environ["LANGFUSE_TRACING_ENABLED"] = "false"
+
 os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-key")
 os.environ.setdefault("ITAD_API_KEY", "test-itad-key")

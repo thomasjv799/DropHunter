@@ -62,7 +62,10 @@ async def on_message(message: discord.Message):
     await message.channel.send(reply[:2000])
 
 
-@tree.command(name="clearmemory", description="Summarize and clear your conversation history to reduce hallucinations")
+@tree.command(
+    name="clearmemory",
+    description="Summarize and clear your conversation history to reduce hallucinations",
+)
 async def clearmemory(interaction: discord.Interaction):
     """Summarize all chat history into key facts and clear raw messages."""
     await interaction.response.defer(thinking=True)
@@ -87,7 +90,9 @@ async def clearmemory(interaction: discord.Interaction):
         )
 
 
-@tree.command(name="resetmemory", description="Completely wipe your conversation history (full reset)")
+@tree.command(
+    name="resetmemory", description="Completely wipe your conversation history (full reset)"
+)
 async def resetmemory(interaction: discord.Interaction):
     """Delete ALL chat messages and summary — complete fresh start."""
     await interaction.response.defer(thinking=True)
@@ -147,6 +152,25 @@ async def listusers(interaction: discord.Interaction):
         return
     lines = "\n".join(f"• <@{r['user_id']}>" for r in rows)
     await interaction.followup.send(f"**Permitted users:**\n{lines}")
+
+
+@tree.command(name="setemail", description="Register your email address for deal alerts")
+@app_commands.describe(address="Your email address")
+async def setemail(interaction: discord.Interaction, address: str):
+    from db.client import set_user_email
+
+    await interaction.response.defer(ephemeral=True)
+    try:
+        saved = await asyncio.to_thread(set_user_email, str(interaction.user.id), address)
+        message = "Email address saved for deal alerts." if saved else "Your access was revoked."
+    except PermissionError:
+        message = "Sorry, you're not authorized to use this bot."
+    except ValueError as exc:
+        message = str(exc)
+    except Exception as exc:
+        logger.error("Failed to save email (%s)", type(exc).__name__)
+        message = "Couldn't save your email address. Please try again later."
+    await interaction.followup.send(message)
 
 
 def run():

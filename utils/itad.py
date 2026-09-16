@@ -4,7 +4,7 @@ from typing import Optional
 
 import requests
 from dotenv import load_dotenv
-from tenacity import retry, stop_after_attempt, wait_exponential, before_sleep_log
+from tenacity import before_sleep_log, retry, stop_after_attempt, wait_exponential
 
 _BASE_URL = "https://api.isthereanydeal.com"
 

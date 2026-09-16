@@ -1,12 +1,16 @@
+from datetime import datetime, timezone
+
 # tests/test_db.py
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
+from db.client import get_chat_context, get_message_count, save_turn, summarize_if_needed
 
 # ---------------------------------------------------------------------------
 # Fixture: mock psycopg2 connection + cursor
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_cur(mocker):
@@ -18,6 +22,7 @@ def mock_cur(mocker):
     conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
     mocker.patch("db.client._ensure_conn", return_value=conn)
     import db.client as db_module
+
     db_module._conn = None
     return cur
 
@@ -26,12 +31,19 @@ def mock_cur(mocker):
 # Game tests
 # ---------------------------------------------------------------------------
 
+
 def test_get_games_returns_list(mock_cur):
     from db.client import get_games
 
     mock_cur.fetchall.return_value = [
-        {"id": "abc", "title": "Elden Ring", "itad_id": "eldenring", "user_id": "A",
-         "target_price": None, "added_at": "2024-01-01T00:00:00+00:00"}
+        {
+            "id": "abc",
+            "title": "Elden Ring",
+            "itad_id": "eldenring",
+            "user_id": "A",
+            "target_price": None,
+            "added_at": "2024-01-01T00:00:00+00:00",
+        }
     ]
     result = get_games()
     assert result[0]["title"] == "Elden Ring"
@@ -41,8 +53,12 @@ def test_add_game_inserts_row(mock_cur):
     from db.client import add_game
 
     mock_cur.fetchone.return_value = {
-        "id": "abc", "title": "Elden Ring", "itad_id": "eldenring",
-        "user_id": "A", "target_price": None, "added_at": "2024-01-01T00:00:00+00:00"
+        "id": "abc",
+        "title": "Elden Ring",
+        "itad_id": "eldenring",
+        "user_id": "A",
+        "target_price": None,
+        "added_at": "2024-01-01T00:00:00+00:00",
     }
     result = add_game("A", "Elden Ring", "eldenring")
     assert result["title"] == "Elden Ring"
@@ -76,14 +92,18 @@ def test_insert_price_history(mock_cur):
     from db.client import insert_price_history
 
     mock_cur.fetchone.return_value = {
-        "id": "xyz", "game_id": "abc", "price": 29.99,
-        "regular_price": 59.99, "store": "Steam", "fetched_at": "2024-01-01T00:00:00+00:00"
+        "id": "xyz",
+        "game_id": "abc",
+        "price": 29.99,
+        "regular_price": 59.99,
+        "store": "Steam",
+        "fetched_at": "2024-01-01T00:00:00+00:00",
     }
     result = insert_price_history("abc", 29.99, 59.99, "Steam")
     assert result["price"] == 29.99
     mock_cur.execute.assert_called_once()
     sql, params = mock_cur.execute.call_args[0]
-    assert "INSERT INTO drophunter.price_history" in sql
+    assert "INSERT INTO price_history" in sql
     assert params == ("abc", 29.99, 59.99, "Steam")
 
 
@@ -116,7 +136,7 @@ def test_was_recently_notified_false(mock_cur):
 
 
 def test_was_recently_notified_custom_hours(mock_cur):
-    from datetime import datetime, timedelta, timezone
+    from datetime import timedelta
 
     from db.client import was_recently_notified
 
@@ -134,8 +154,10 @@ def test_log_notification(mock_cur):
     from db.client import log_notification
 
     mock_cur.fetchone.return_value = {
-        "id": "n1", "game_id": "abc", "price": 29.99,
-        "notified_at": "2024-01-01T00:00:00+00:00"
+        "id": "n1",
+        "game_id": "abc",
+        "price": 29.99,
+        "notified_at": "2024-01-01T00:00:00+00:00",
     }
     result = log_notification("abc", 29.99)
     assert result["game_id"] == "abc"
@@ -147,9 +169,12 @@ def test_get_recent_deals(mocker):
     cur = MagicMock()
     cur.fetchall.return_value = [
         {
-            "id": "n1", "game_id": "g1", "price": 9.99,
+            "id": "n1",
+            "game_id": "g1",
+            "price": 9.99,
             "notified_at": "2024-01-01T10:00:00+00:00",
-            "game_title": "Hades", "game_user_id": "A",
+            "game_title": "Hades",
+            "game_user_id": "A",
         }
     ]
     conn = MagicMock()
@@ -167,7 +192,6 @@ def test_get_recent_deals(mocker):
 # Chat memory tests
 # ---------------------------------------------------------------------------
 
-from db.client import get_chat_context, save_turn, get_message_count, summarize_if_needed
 
 
 def _make_conn(mocker, summary_data=None, messages_data=None, count=0):
@@ -242,7 +266,7 @@ def test_save_turn_inserts_two_messages(mock_cur):
     save_turn("user123", "track hades", "Now tracking Hades.")
     mock_cur.execute.assert_called_once()
     sql, params = mock_cur.execute.call_args[0]
-    assert "INSERT INTO drophunter.chat_messages" in sql
+    assert "INSERT INTO chat_messages" in sql
     assert "user123" in params
     assert "track hades" in params
     assert "Now tracking Hades." in params
@@ -300,13 +324,18 @@ def test_summarize_if_needed_triggers_and_deletes(mocker):
 # Watch tests
 # ---------------------------------------------------------------------------
 
+
 def test_add_watch_upserts(mock_cur):
     from db import client
 
     mock_cur.fetchone.return_value = {"id": "w1", "name": "Casio G1714"}
     result = client.add_watch(
-        "A", name="Casio G1714", brand="Casio", reference_no="G1714",
-        target_price=30000.0, swisstimehouse_url="https://www.swisstimehouse.com/casio-g1714",
+        "A",
+        name="Casio G1714",
+        brand="Casio",
+        reference_no="G1714",
+        target_price=30000.0,
+        swisstimehouse_url="https://www.swisstimehouse.com/casio-g1714",
     )
     assert result["id"] == "w1"
     sql, params = mock_cur.execute.call_args[0]
@@ -326,9 +355,7 @@ def test_get_watches_returns_rows(mock_cur):
 def test_set_watch_target_updates_match(mocker):
     from db import client
 
-    mocker.patch.object(
-        client, "get_watches", return_value=[{"id": "w1", "name": "Casio G1714"}]
-    )
+    mocker.patch.object(client, "get_watches", return_value=[{"id": "w1", "name": "Casio G1714"}])
     cur = MagicMock()
     cur.rowcount = 1
     conn = MagicMock()
@@ -350,9 +377,7 @@ def test_set_watch_target_no_match(mocker):
 def test_remove_watch_deletes_match(mocker):
     from db import client
 
-    mocker.patch.object(
-        client, "get_watches", return_value=[{"id": "w1", "name": "Casio G1714"}]
-    )
+    mocker.patch.object(client, "get_watches", return_value=[{"id": "w1", "name": "Casio G1714"}])
     cur = MagicMock()
     cur.rowcount = 1
     conn = MagicMock()
@@ -374,8 +399,11 @@ def test_log_watch_notification(mock_cur):
     from db import client
 
     mock_cur.fetchone.return_value = {
-        "id": "n1", "watch_id": "w1", "price": 29000.0,
-        "seller": "Swiss Time House", "notified_at": "2024-01-01T00:00:00+00:00"
+        "id": "n1",
+        "watch_id": "w1",
+        "price": 29000.0,
+        "seller": "Swiss Time House",
+        "notified_at": "2024-01-01T00:00:00+00:00",
     }
     result = client.log_watch_notification("w1", 29000.0, "Swiss Time House")
     assert result["id"] == "n1"
@@ -387,14 +415,17 @@ def test_log_watch_notification(mock_cur):
 # Allowlist tests
 # ---------------------------------------------------------------------------
 
+
 def test_is_user_allowed_owner(monkeypatch):
     from db import client
+
     monkeypatch.setenv("OWNER_ID", "owner123")
     assert client.is_user_allowed("owner123") is True
 
 
 def test_is_user_allowed_allowlisted(monkeypatch, mock_cur):
     from db import client
+
     monkeypatch.setenv("OWNER_ID", "owner123")
     mock_cur.fetchone.return_value = {"user_id": "u2"}
     assert client.is_user_allowed("u2") is True
@@ -402,6 +433,7 @@ def test_is_user_allowed_allowlisted(monkeypatch, mock_cur):
 
 def test_is_user_allowed_stranger(monkeypatch, mock_cur):
     from db import client
+
     monkeypatch.setenv("OWNER_ID", "owner123")
     mock_cur.fetchone.return_value = None
     assert client.is_user_allowed("stranger") is False
@@ -409,30 +441,43 @@ def test_is_user_allowed_stranger(monkeypatch, mock_cur):
 
 def test_add_allowed_user(mock_cur):
     from db import client
-    mock_cur.fetchone.return_value = {"user_id": "u2", "added_by": "owner123", "added_at": "2024-01-01T00:00:00+00:00"}
+
+    mock_cur.fetchone.return_value = {
+        "user_id": "u2",
+        "added_by": "owner123",
+        "added_at": "2024-01-01T00:00:00+00:00",
+    }
     result = client.add_allowed_user("u2", "owner123")
     assert result["user_id"] == "u2"
 
 
 def test_remove_allowed_user(mock_cur):
     from db import client
+
     mock_cur.rowcount = 1
     assert client.remove_allowed_user("u2") is True
 
 
 def test_list_allowed_users(mock_cur):
     from db import client
-    mock_cur.fetchall.return_value = [{"user_id": "u2", "added_by": "owner123", "added_at": "2024-01-01T00:00:00+00:00"}]
+
+    mock_cur.fetchall.return_value = [
+        {"user_id": "u2", "added_by": "owner123", "added_at": "2024-01-01T00:00:00+00:00"}
+    ]
     result = client.list_allowed_users()
-    assert result == [{"user_id": "u2", "added_by": "owner123", "added_at": "2024-01-01T00:00:00+00:00"}]
+    assert result == [
+        {"user_id": "u2", "added_by": "owner123", "added_at": "2024-01-01T00:00:00+00:00"}
+    ]
 
 
 # ---------------------------------------------------------------------------
 # Scope / multi-user isolation tests
 # ---------------------------------------------------------------------------
 
+
 def test_get_games_scopes_to_user(mock_cur):
     from db import client
+
     mock_cur.fetchall.return_value = [{"id": "g1", "user_id": "A"}]
     client.get_games("A")
     sql, params = mock_cur.execute.call_args[0]
@@ -442,6 +487,7 @@ def test_get_games_scopes_to_user(mock_cur):
 
 def test_get_games_no_user_returns_all(mock_cur):
     from db import client
+
     mock_cur.fetchall.return_value = [{"id": "g1"}, {"id": "g2"}]
     rows = client.get_games()
     sql = mock_cur.execute.call_args[0][0]
@@ -451,6 +497,7 @@ def test_get_games_no_user_returns_all(mock_cur):
 
 def test_add_game_scopes_and_composite_conflict(mock_cur):
     from db import client
+
     mock_cur.fetchone.return_value = {"id": "g1"}
     client.add_game("A", "Elden Ring", "itad1", target_price=500.0)
     sql, params = mock_cur.execute.call_args[0]
@@ -460,6 +507,7 @@ def test_add_game_scopes_and_composite_conflict(mock_cur):
 
 def test_set_target_price_scoped(mocker):
     from db import client
+
     mocker.patch.object(client, "get_games", return_value=[{"id": "g1", "title": "Elden Ring"}])
     cur = MagicMock()
     cur.rowcount = 1
@@ -473,6 +521,7 @@ def test_set_target_price_scoped(mocker):
 
 def test_remove_game_scoped(mocker):
     from db import client
+
     mocker.patch.object(client, "get_games", return_value=[{"id": "g1", "title": "Elden Ring"}])
     cur = MagicMock()
     cur.rowcount = 1
@@ -486,6 +535,7 @@ def test_remove_game_scoped(mocker):
 
 def test_get_watches_scopes_to_user(mock_cur):
     from db import client
+
     mock_cur.fetchall.return_value = [{"id": "w1"}]
     client.get_watches("A")
     sql, params = mock_cur.execute.call_args[0]
@@ -495,6 +545,7 @@ def test_get_watches_scopes_to_user(mock_cur):
 
 def test_get_watches_no_user_returns_all(mock_cur):
     from db import client
+
     mock_cur.fetchall.return_value = [{"id": "w1"}, {"id": "w2"}]
     rows = client.get_watches()
     sql = mock_cur.execute.call_args[0][0]
@@ -504,9 +555,16 @@ def test_get_watches_no_user_returns_all(mock_cur):
 
 def test_add_watch_scopes_and_composite_conflict(mock_cur):
     from db import client
+
     mock_cur.fetchone.return_value = {"id": "w1"}
-    client.add_watch("A", name="Casio", brand="Casio", reference_no="G1",
-                     target_price=30000.0, swisstimehouse_url="https://www.swisstimehouse.com/x")
+    client.add_watch(
+        "A",
+        name="Casio",
+        brand="Casio",
+        reference_no="G1",
+        target_price=30000.0,
+        swisstimehouse_url="https://www.swisstimehouse.com/x",
+    )
     sql, params = mock_cur.execute.call_args[0]
     assert "ON CONFLICT (user_id, swisstimehouse_url)" in sql
     assert params[0] == "A"
@@ -514,6 +572,7 @@ def test_add_watch_scopes_and_composite_conflict(mock_cur):
 
 def test_set_watch_target_scoped(mocker):
     from db import client
+
     mocker.patch.object(client, "get_watches", return_value=[{"id": "w1", "name": "Casio G1714"}])
     cur = MagicMock()
     cur.rowcount = 1
@@ -527,6 +586,7 @@ def test_set_watch_target_scoped(mocker):
 
 def test_remove_watch_scoped(mocker):
     from db import client
+
     mocker.patch.object(client, "get_watches", return_value=[{"id": "w1", "name": "Casio G1714"}])
     cur = MagicMock()
     cur.rowcount = 1
