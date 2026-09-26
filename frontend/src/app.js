@@ -54,6 +54,7 @@ const showError = (error) => {
     ++state.chartRequest;
     ++state.viewRequest;
     state.selected = null;
+    $("other-view").replaceChildren();
     clearChart("Select a game below");
     $("dashboard").hidden = true;
     $("login").hidden = false;
@@ -540,6 +541,8 @@ $("demo").onclick = () =>
     state.demo = true;
     call = guarded(demoRequest);
     clearChart("Select a game below");
+    $("other-view").replaceChildren();
+    await section("games");
     await enter();
   });
 $("signout").onclick = () =>

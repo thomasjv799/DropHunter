@@ -23,22 +23,31 @@
 
 ## Task 1 — identity, approval, and scoped data
 Files: web/auth.py, web/repository.py, web/admin.py, supabase/migrations/*, tests/test_web.py, tests/test_web_integration.py.
-- [ ] Write tests: reject unauthenticated/unapproved access; enforce mapping and cross-user isolation.
-- [ ] Run `python -m pytest tests/test_web.py -q` and observe missing implementation.
-- [ ] Implement `create_app()` with injectable identity verifier and repository for HTTP tests; `Repository` with parameterized SQL and per-request connections.
-- [ ] Add private account mapping and game/time indexes. Approval is an administrator CLI using the Supabase UUID and Discord ID.
-- [ ] Run unit tests and database contract tests.
+- [x] Write tests: reject unauthenticated/unapproved access; enforce mapping and cross-user isolation.
+- [x] Run `python -m pytest tests/test_web.py -q` and observe missing implementation.
+- [x] Implement `create_app()` with injectable identity verifier and repository for HTTP tests; `Repository` with parameterized SQL and per-request connections.
+- [x] Add private account mapping and game/time indexes. Approval is an administrator CLI using the Supabase UUID and Discord ID.
+- [x] Run unit tests and database contract tests.
 
 ## Task 2 — dashboard and authentication UI
 Files: frontend/package.json, frontend/package-lock.json, frontend/src/*, frontend/index.html.
-- [ ] Add node tests for chart series, missing/stale prices and safe URL handling; run `npm test` red.
-- [ ] Build login, pending approval, game pagination/search/filter/sort, selected-game chart, add/edit/remove, watches, activity, notification email.
-- [ ] Use PKCE Supabase Google login and Authorization headers. Render text through DOM APIs, not raw API-supplied HTML.
-- [ ] Run frontend tests/build and browser smoke checks with explicit demo mode.
+- [x] Add node tests for chart series, missing/stale prices and safe URL handling; run `npm test` red.
+- [x] Build login, pending approval, game pagination/search/filter/sort, selected-game chart, add/edit/remove, watches, activity, notification email.
+- [x] Use PKCE Supabase Google login and Authorization headers. Render text through DOM APIs, not raw API-supplied HTML.
+- [x] Run frontend tests/build and browser smoke checks with explicit demo mode.
 
 ## Task 3 — reliability, packaging, docs, review
 Files: utils/itad.py, requirements-web.txt, Dockerfile.web, .github/workflows/ci.yml, docs/dashboard.md, README.md.
-- [ ] Test and add bounded ITAD HTTP timeouts.
-- [ ] Package separately from the bot; document provider configuration, migration, approval/revocation, deployment, rollback.
-- [ ] Run full pytest/ruff/build and PostgreSQL contracts; request independent security/correctness review.
-- [ ] Fix findings; create PR, wait for CI, merge only after checks pass under prior user authorization.
+- [x] Test and add bounded ITAD HTTP timeouts.
+- [x] Package separately from the bot; document provider configuration, migration, approval/revocation, deployment, rollback.
+- [x] Run full pytest/ruff/build and PostgreSQL contracts; request independent security/correctness review.
+- [x] Fix findings; create PR, wait for CI, merge only after checks pass under prior user authorization.
+
+## Execution record
+- Scope and implementation authorized by user after detailed issue #11, without another design-approval stop.
+- Chose a feature branch in the current checkout; preserved pre-existing untracked files.
+- Backend/access tests written before implementation; target validation, token rejection, signed selections and revocation covered.
+- Independent review: corrected email-save permission restoration; bounded search timeouts and removed web retries; discarded stale search/workspace responses; added and observed a failing browser regression for demo session isolation before fixing it.
+- Initial CI: 204 Python/PostgreSQL tests, 6 frontend unit tests, 4 browser tests passed. Added fifth browser regression subsequently.
+- Local Docker is offline; real PostgreSQL 17 validation runs in GitHub CI for both tracker schemas.
+- Production Google setup, HTTPS host, migration application, and approval mapping remain activation steps; no live database changes made.
