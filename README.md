@@ -1,7 +1,20 @@
-# DropHunter 
+# DropHunter
 
 A private, multi-user Discord bot that tracks game and watch prices and alerts you when deals hit. You talk to it in plain English over DM; the owner permits who can use it, and every person's watchlist and alerts are isolated.
-<img width="2442" height="1423" alt="image" src="https://github.com/user-attachments/assets/023ac522-b964-4e54-9fda-0fc24faded6f" />
+
+## Web dashboard
+
+A separate web dashboard adds Google sign-in for approved users, searchable game lists,
+selected-game price charts, target editing, watch/alert views, and email preferences.
+The charcoal UI supports 50–100 games with pagination and a clearly labeled sample-data mode.
+
+**[Dashboard setup and deployment →](docs/dashboard.md)** ·
+[Feature specification](docs/superpowers/specs/2026-09-26-dashboard-design.md) ·
+[Issue #11](https://github.com/thomasjv799/DropHunter/issues/11)
+
+Google OAuth configuration and explicit account approval are required before live access.
+The web service and the scheduled tracker deploy independently.
+
 
 ---
 

@@ -175,3 +175,10 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Dashboard build and local tooling
+frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/
+web/static/*
+supabase/.temp/
