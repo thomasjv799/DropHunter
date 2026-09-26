@@ -1,0 +1,10 @@
+{
+  "name": "drophunter-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"dev": "vite --host 127.0.0.1", "build": "vite build", "test": "node --test src/*.test.js", "test:e2e": "playwright test"},
+  "dependencies": {"@supabase/supabase-js": "2.117.2"},
+  "devDependencies": {"vite": "6.4.3", "@playwright/test": "1.63.0"},
+  "engines": {"node": ">=22"}
+}

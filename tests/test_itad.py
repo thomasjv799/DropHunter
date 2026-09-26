@@ -96,3 +96,22 @@ def test_get_best_price_raises_on_http_error():
     with patch("utils.itad.requests.post", return_value=mock_response):
         with pytest.raises(req.HTTPError):
             get_best_price("018d937f-1111-7000-aaaa-000000000001")
+
+
+@pytest.mark.parametrize('function,args,method', [
+    ('search_game', ['Hades'], 'get'),
+    ('get_best_price', ['game-id'], 'post'),
+    ('get_historical_low', ['game-id'], 'post'),
+    ('get_all_prices', ['game-id'], 'post'),
+])
+def test_itad_calls_have_bounded_network_timeouts(function, args, method, monkeypatch):
+    from utils import itad
+
+    def send(*args, **kwargs):
+        assert 0 < kwargs.get('timeout', (0, 0))[0] <= 10
+        assert 0 < kwargs.get('timeout', (0, 0))[1] <= 20
+        response = MagicMock()
+        response.json.return_value = []
+        return response
+    monkeypatch.setattr(itad.requests, method, send)
+    getattr(itad, function).__wrapped__(*args)

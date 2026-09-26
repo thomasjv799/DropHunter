@@ -30,6 +30,7 @@ def search_game(title: str) -> Optional[dict]:
     response = requests.get(
         f"{_BASE_URL}/games/search/v1",
         params={"title": title, "key": _api_key()},
+        timeout=(5, 15),
     )
     response.raise_for_status()
     results = response.json()
@@ -53,6 +54,7 @@ def get_best_price(itad_id: str) -> Optional[dict]:
         f"{_BASE_URL}/games/prices/v3",
         params={"key": _api_key(), "country": "IN"},
         json=[itad_id],
+        timeout=(5, 15),
     )
     response.raise_for_status()
     data = response.json()
@@ -87,6 +89,7 @@ def get_historical_low(itad_id: str) -> Optional[float]:
         f"{_BASE_URL}/games/historylow/v1",
         params={"key": _api_key(), "country": "IN"},
         json=[itad_id],
+        timeout=(5, 15),
     )
     response.raise_for_status()
     data = response.json()
@@ -109,6 +112,7 @@ def get_all_prices(itad_id: str) -> list[dict]:
         f"{_BASE_URL}/games/prices/v3",
         params={"key": _api_key(), "country": "IN"},
         json=[itad_id],
+        timeout=(5, 15),
     )
     response.raise_for_status()
     data = response.json()
